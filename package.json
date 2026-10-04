@@ -8,8 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck",
-    "check:github": "tsx scripts/check-github.ts"
+    "test": "npm run typecheck && npm run test:surface",
+    "check:github": "tsx scripts/check-github.ts",
+    "test:surface": "npm run build && tsx scripts/tool-surface-test.ts"
   },
   "keywords": [
     "mcp",
