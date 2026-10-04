@@ -38,5 +38,16 @@
     "@types/node": "^26.6.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JakubManikowski1/repo_context_mcp.git"
+  },
+  "homepage": "https://github.com/JakubManikowski1/repo_context_mcp#readme",
+  "bugs": {
+    "url": "https://github.com/JakubManikowski1/repo_context_mcp/issues"
   }
 }
