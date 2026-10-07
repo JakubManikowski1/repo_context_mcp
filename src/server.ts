@@ -3,7 +3,10 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 
 import { featureConfig } from "./config.js";
-import { getLegacyRepositoryContext } from "./repository-context.js";
+import {
+  getLegacyRepositoryContext,
+  type RepositoryContext,
+} from "./repository-context.js";
 
 import { registerIssueTools } from "./issues.js";
 import { registerUiTools } from "./ui.js";
@@ -17,6 +20,49 @@ import { registerIssueLookupTools } from "./issue-lookup.js";
 import { registerDbTools } from "./db.js";
 import { registerDbImpactTools } from "./db-impact.js";
 import { registerDbMermaidTools } from "./db-mermaid.js";
+
+function registerOptionalProfileTools(
+  server: McpServer,
+  repository: RepositoryContext,
+) {
+  const optionalProfilesEnabled =
+    featureConfig.ui ||
+    featureConfig.history ||
+    featureConfig.workflow ||
+    featureConfig.db;
+
+  if (!optionalProfilesEnabled) {
+    return;
+  }
+
+  if (repository.source !== "legacy-env") {
+    throw new Error(
+      "Optional profiles are currently supported only by the legacy-env repository context. " +
+      "They must be migrated to RepositoryContext before being enabled for connection-backed repositories.",
+    );
+  }
+
+  if (featureConfig.ui) {
+    registerUiTools(server);
+    registerUiInventoryTools(server);
+    registerUiFlowTools(server);
+  }
+
+  if (featureConfig.history) {
+    registerHistoryTools(server);
+  }
+
+  if (featureConfig.workflow) {
+    registerGuidanceTools(server);
+    registerCommandTools(server);
+  }
+
+  if (featureConfig.db) {
+    registerDbTools(server);
+    registerDbImpactTools(server);
+    registerDbMermaidTools(server);
+  }
+}
 
 const handler = createMcpHandler((ctx) => {
   const repository = getLegacyRepositoryContext();
@@ -107,26 +153,10 @@ GENERAL
     repository,
   );
   registerIssueLookupTools(server, repository);
-  if (featureConfig.ui) {
-    registerUiTools(server);
-    registerUiInventoryTools(server);
-    registerUiFlowTools(server);
-  }
-
-  if (featureConfig.history) {
-    registerHistoryTools(server);
-  }
-
-  if (featureConfig.workflow) {
-    registerGuidanceTools(server);
-    registerCommandTools(server);
-  }
-
-  if (featureConfig.db) {
-    registerDbTools(server);
-    registerDbImpactTools(server);
-    registerDbMermaidTools(server);
-  }
+  registerOptionalProfileTools(
+    server,
+    repository,
+  );
 
 
   return server;
