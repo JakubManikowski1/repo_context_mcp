@@ -112,6 +112,12 @@ const suites:
       script:
         "test:connect-installation-selection",
     },
+    {
+      label:
+        "GitHub connect HTTP router",
+      script:
+        "test:connect-http",
+    },
   ];
 
 const npmCommand =
