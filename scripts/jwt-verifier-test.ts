@@ -369,16 +369,32 @@ async function main(): Promise<void> {
     // Tampered signature.
     // -------------------------------------------------
 
-    const parts =
+    const [
+      header,
+      payload,
+      signature,
+    ] =
       validToken.split(".");
 
-    assert.equal(
-      parts.length,
-      3,
+    assert.ok(
+      header &&
+      payload &&
+      signature,
+      "JWT must contain header, payload, and signature",
     );
 
+    const replacement =
+      signature[0] === "A"
+        ? "B"
+        : "A";
+
     const tampered =
-      `${parts[0]}.${parts[1]}.${parts[2].slice(0, -1)}A`;
+      `${header}.${payload}.${replacement}${signature.slice(1)}`;
+
+    assert.notEqual(
+      tampered,
+      validToken,
+    );
 
     await expectInvalid(
       verifier.verifyAccessToken,
