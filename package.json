@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store && npm run test:resolver && npm run test:selection && npm run test:isolation && npm run test:auth && npm run test:resource-auth",
+    "test": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store && npm run test:resolver && npm run test:selection && npm run test:isolation && npm run test:auth && npm run test:resource-auth && npm run test:jwt-auth",
     "test:crypto": "tsx scripts/connection-crypto-test.ts",
     "test:store": "tsx scripts/connection-store-test.ts",
     "test:resolver": "tsx scripts/connection-resolver-test.ts",
@@ -16,6 +16,7 @@
     "test:isolation": "tsx scripts/tool-isolation-test.ts",
     "test:auth": "tsx scripts/auth-boundary-test.ts",
     "test:resource-auth": "tsx scripts/oauth-resource-server-test.ts",
+    "test:jwt-auth": "tsx scripts/jwt-verifier-test.ts",
     "check:github": "tsx scripts/check-github.ts",
     "test:surface": "npm run build && tsx scripts/tool-surface-test.ts"
   },
@@ -39,6 +40,7 @@
     "better-sqlite3": "^13.0.3",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
+    "jose": "6.2.12",
     "zod": "^4.6.5"
   },
   "devDependencies": {
