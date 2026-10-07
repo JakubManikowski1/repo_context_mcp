@@ -12,6 +12,14 @@ import {
 } from "./auth/resource-server.js";
 
 import {
+  getAuthenticatedPrincipal,
+} from "./auth/principal.js";
+
+import {
+  createGitHubConnectRouter,
+} from "./connections/github-connect-router.js";
+
+import {
   createRequestRepositoryAccess,
   loadServerRuntimeFromEnv,
 } from "./server-runtime.js";
@@ -223,6 +231,50 @@ if (
           "repo_context_mcp",
       },
     );
+
+  if (
+    serverRuntime.githubConnect
+  ) {
+    app.use(
+      "/connect/github",
+
+      createGitHubConnectRouter({
+        authenticate:
+          auth,
+
+        getPrincipal:
+          (request) =>
+            getAuthenticatedPrincipal(
+              request.auth,
+            ),
+
+        oauthFlow:
+          serverRuntime
+            .githubConnect
+            .oauthFlow,
+
+        userRepositoryConnector:
+          serverRuntime
+            .githubConnect
+            .userRepositoryConnector,
+
+        repositorySelection:
+          serverRuntime
+            .githubConnect
+            .repositorySelection,
+
+        installationSelection:
+          serverRuntime
+            .githubConnect
+            .installationSelection,
+
+        cookieSecure:
+          serverRuntime
+            .githubConnect
+            .cookieSecure,
+      }),
+    );
+  }
 
   app.all(
     "/mcp",

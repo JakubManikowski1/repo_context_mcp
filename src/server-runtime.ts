@@ -31,9 +31,55 @@ import {
   createJwtAccessTokenVerifier,
 } from "./auth/jwt-verifier.js";
 
+import {
+  deriveGitHubConnectStateKey,
+  GitHubOAuthFlow,
+  type GitHubOAuthFlowOptions,
+} from "./connections/github-oauth-flow.js";
+
+import {
+  GitHubRepositoryConnector,
+} from "./connections/github-connect.js";
+
+import {
+  GitHubRepositorySelection,
+} from "./connections/github-selection.js";
+
+import {
+  GitHubInstallationSelection,
+  type GitHubInstallationSelectionOptions,
+} from "./connections/github-installation-selection.js";
+
 export type LegacyServerRuntime =
   Readonly<{
     mode: "legacy";
+  }>;
+
+export type GitHubConnectServerRuntime =
+  Readonly<{
+    oauthFlow: GitHubOAuthFlow;
+
+    userRepositoryConnector:
+      GitHubRepositoryConnector;
+
+    repositorySelection:
+      GitHubRepositorySelection;
+
+    installationSelection:
+      GitHubInstallationSelection;
+
+    cookieSecure: boolean;
+  }>;
+
+export type ServerRuntimeDependencies =
+  Readonly<{
+    fetch?:
+      GitHubOAuthFlowOptions["fetch"];
+
+    createGitHubClient?:
+      GitHubInstallationSelectionOptions[
+        "createGitHubClient"
+      ];
   }>;
 
 export type OAuthServerRuntime =
@@ -45,6 +91,9 @@ export type OAuthServerRuntime =
     requiredScopes: readonly string[];
     resolver: RepositoryAccessResolver;
     store: SqliteRepositoryConnectionStore;
+
+    githubConnect:
+      GitHubConnectServerRuntime | null;
   }>;
 
 export type ServerRuntime =
@@ -181,6 +230,9 @@ function hasOptionalProfiles(
 
 export function loadServerRuntimeFromEnv(
   env: NodeJS.ProcessEnv = process.env,
+
+  dependencies:
+    ServerRuntimeDependencies = {},
 ): ServerRuntime {
   const mode =
     (
@@ -273,6 +325,44 @@ export function loadServerRuntimeFromEnv(
     );
   }
 
+  const githubAppSlug =
+    (
+      env.REPO_CONTEXT_GITHUB_APP_SLUG ??
+      ""
+    ).trim();
+
+  const githubClientId =
+    (
+      env.REPO_CONTEXT_GITHUB_CLIENT_ID ??
+      ""
+    ).trim();
+
+  const githubClientSecret =
+    (
+      env.REPO_CONTEXT_GITHUB_CLIENT_SECRET ??
+      ""
+    ).trim();
+
+  const githubConnectValues = [
+    githubAppSlug,
+    githubClientId,
+    githubClientSecret,
+  ];
+
+  const githubConnectConfigured =
+    githubConnectValues
+      .some(Boolean);
+
+  if (
+    githubConnectConfigured &&
+    !githubConnectValues
+      .every(Boolean)
+  ) {
+    throw new Error(
+      "GitHub connect configuration must provide REPO_CONTEXT_GITHUB_APP_SLUG, REPO_CONTEXT_GITHUB_CLIENT_ID, and REPO_CONTEXT_GITHUB_CLIENT_SECRET together",
+    );
+  }
+
   const store =
     new SqliteRepositoryConnectionStore(
       databasePath,
@@ -284,6 +374,99 @@ export function loadServerRuntimeFromEnv(
       lookupKey,
       encryptionKey,
     });
+
+  let githubConnect:
+    GitHubConnectServerRuntime | null =
+      null;
+
+  if (
+    githubConnectConfigured
+  ) {
+    const githubConnectStateKey =
+      deriveGitHubConnectStateKey(
+        encryptionKey,
+      );
+
+    const githubConnectCallbackUrl =
+      new URL(
+        "/connect/github/callback",
+        mcpServerUrl,
+      );
+
+    githubConnect = {
+      oauthFlow:
+        new GitHubOAuthFlow({
+          appSlug:
+            githubAppSlug,
+
+          clientId:
+            githubClientId,
+
+          clientSecret:
+            githubClientSecret,
+
+          callbackUrl:
+            githubConnectCallbackUrl,
+
+          stateKey:
+            githubConnectStateKey,
+
+          ...(
+            dependencies.fetch
+              ? {
+                  fetch:
+                    dependencies.fetch,
+                }
+              : {}
+          ),
+        }),
+
+      userRepositoryConnector:
+        new GitHubRepositoryConnector({
+          store,
+          lookupKey,
+          encryptionKey,
+
+          ...(
+            dependencies.fetch
+              ? {
+                  fetch:
+                    dependencies.fetch,
+                }
+              : {}
+          ),
+        }),
+
+      repositorySelection:
+        new GitHubRepositorySelection({
+          stateKey:
+            githubConnectStateKey,
+        }),
+
+      installationSelection:
+        new GitHubInstallationSelection({
+          store,
+          lookupKey,
+          encryptionKey,
+
+          ...(
+            dependencies
+              .createGitHubClient
+              ? {
+                  createGitHubClient:
+                    dependencies
+                      .createGitHubClient,
+                }
+              : {}
+          ),
+        }),
+
+      cookieSecure:
+        githubConnectCallbackUrl
+          .protocol ===
+        "https:",
+    };
+  }
 
   const oauthMetadata: OAuthMetadata = {
     issuer,
@@ -312,6 +495,7 @@ export function loadServerRuntimeFromEnv(
     mode: "oauth",
     mcpServerUrl,
     oauthMetadata,
+    githubConnect,
 
     verifier:
       createJwtAccessTokenVerifier({

@@ -118,6 +118,12 @@ const suites:
       script:
         "test:connect-http",
     },
+    {
+      label:
+        "GitHub connect server E2E",
+      script:
+        "test:connect-server-e2e",
+    },
   ];
 
 const npmCommand =
