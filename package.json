@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run test:surface",
+    "test": "npm run typecheck && npm run test:surface && npm run test:crypto",
+    "test:crypto": "tsx scripts/connection-crypto-test.ts",
     "check:github": "tsx scripts/check-github.ts",
     "test:surface": "npm run build && tsx scripts/tool-surface-test.ts"
   },
