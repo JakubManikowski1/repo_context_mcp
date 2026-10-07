@@ -1,4 +1,12 @@
 import { spawn } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -47,6 +55,7 @@ async function waitForHealth(port: number): Promise<void> {
 
 async function listTools(
   port: number,
+  privateKeyPath: string,
   features?: string,
 ): Promise<string[]> {
   const child = spawn(
@@ -55,8 +64,33 @@ async function listTools(
     {
       env: {
         ...process.env,
-        PORT: String(port),
-        REPO_CONTEXT_FEATURES: features ?? "",
+
+        PORT:
+          String(port),
+
+        REPO_CONTEXT_AUTH_MODE:
+          "legacy",
+
+        REPO_CONTEXT_FEATURES:
+          features ?? "",
+
+        GITHUB_APP_ID:
+          "123456",
+
+        GITHUB_INSTALLATION_ID:
+          "12345678",
+
+        GITHUB_OWNER:
+          "tool-surface-owner",
+
+        GITHUB_REPO:
+          "tool-surface-repository",
+
+        GITHUB_BRANCH:
+          "main",
+
+        GITHUB_PRIVATE_KEY_PATH:
+          privateKeyPath,
       },
       stdio: "ignore",
     },
@@ -105,26 +139,75 @@ function assertEqual(
 }
 
 async function main() {
-  const core = await listTools(3110);
+  const directory =
+    mkdtempSync(
+      join(
+        tmpdir(),
+        "repo-context-tool-surface-",
+      ),
+    );
 
-  assertEqual(
-    core,
-    [...CORE_TOOLS].sort(),
-    "core",
+  const privateKeyPath =
+    join(
+      directory,
+      "github-app.pem",
+    );
+
+  const {
+    privateKey,
+  } = generateKeyPairSync(
+    "rsa",
+    {
+      modulusLength: 2048,
+    },
   );
 
-  const full = await listTools(
-    3111,
-    "db,ui,history,workflow",
+  writeFileSync(
+    privateKeyPath,
+    privateKey.export({
+      type: "pkcs8",
+      format: "pem",
+    }),
   );
 
-  assertEqual(
-    full,
-    FULL_TOOLS,
-    "full",
-  );
+  try {
+    const core =
+      await listTools(
+        3110,
+        privateKeyPath,
+      );
 
-  console.log("Tool surface: OK");
+    assertEqual(
+      core,
+      [...CORE_TOOLS].sort(),
+      "core",
+    );
+
+    const full =
+      await listTools(
+        3111,
+        privateKeyPath,
+        "db,ui,history,workflow",
+      );
+
+    assertEqual(
+      full,
+      FULL_TOOLS,
+      "full",
+    );
+
+    console.log(
+      "Tool surface: OK",
+    );
+  } finally {
+    rmSync(
+      directory,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
 }
 
 main().catch((error) => {
