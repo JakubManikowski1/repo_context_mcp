@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store && npm run test:resolver && npm run test:selection && npm run test:isolation && npm run test:auth && npm run test:resource-auth && npm run test:jwt-auth && npm run test:oauth-server",
+    "test": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store && npm run test:resolver && npm run test:selection && npm run test:isolation && npm run test:auth && npm run test:resource-auth && npm run test:jwt-auth && npm run test:oauth-server && npm run test:connect",
     "test:crypto": "tsx scripts/connection-crypto-test.ts",
     "test:store": "tsx scripts/connection-store-test.ts",
     "test:resolver": "tsx scripts/connection-resolver-test.ts",
@@ -19,7 +19,8 @@
     "test:jwt-auth": "tsx scripts/jwt-verifier-test.ts",
     "check:github": "tsx scripts/check-github.ts",
     "test:surface": "npm run build && tsx scripts/tool-surface-test.ts",
-    "test:oauth-server": "npm run build && tsx scripts/oauth-server-mode-test.ts"
+    "test:oauth-server": "npm run build && tsx scripts/oauth-server-mode-test.ts",
+    "test:connect": "tsx scripts/github-connect-test.ts"
   },
   "keywords": [
     "mcp",
