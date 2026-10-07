@@ -116,24 +116,98 @@ Copy the environment template:
 cp .env.example .env
 ```
 
-Configure:
+Configure the server explicitly for one of two modes.
+
+### Legacy / single-repository mode
+
+Legacy mode preserves the original self-hosted setup. One GitHub App
+installation and one repository are configured globally.
 
 ```env
-GITHUB_APP_ID=123456
-GITHUB_INSTALLATION_ID=12345678
+REPO_CONTEXT_AUTH_MODE=legacy
 
+GITHUB_APP_ID=123456
+GITHUB_PRIVATE_KEY_PATH=/absolute/path/to/github-app.pem
+
+GITHUB_INSTALLATION_ID=12345678
 GITHUB_OWNER=your-github-user-or-org
 GITHUB_REPO=your-repository
 GITHUB_BRANCH=main
 
+PORT=3000
+```
+
+`legacy` is currently the default when `REPO_CONTEXT_AUTH_MODE` is
+not set.
+
+Optional capability profiles (`db`, `ui`, `history`, `workflow`) are
+legacy-only.
+
+### OAuth / multi-user mode
+
+OAuth mode does not use a globally configured repository as proof of
+repository access. Repository access is derived from the verified MCP
+principal and that principal's active encrypted repository connections.
+
+```env
+REPO_CONTEXT_AUTH_MODE=oauth
+
+REPO_CONTEXT_MCP_URL=https://mcp.example.com/mcp
+
+REPO_CONTEXT_OAUTH_ISSUER=https://auth.example.com/
+REPO_CONTEXT_OAUTH_AUTHORIZATION_ENDPOINT=https://auth.example.com/authorize
+REPO_CONTEXT_OAUTH_TOKEN_ENDPOINT=https://auth.example.com/oauth/token
+REPO_CONTEXT_OAUTH_JWKS_URL=https://auth.example.com/.well-known/jwks.json
+
+REPO_CONTEXT_CONNECTION_DB_PATH=/absolute/path/to/repository-connections.sqlite
+
+REPO_CONTEXT_USER_LOOKUP_KEY=<base64-32-byte-key>
+REPO_CONTEXT_CONNECTION_ENCRYPTION_KEY=<different-base64-32-byte-key>
+
+GITHUB_APP_ID=123456
 GITHUB_PRIVATE_KEY_PATH=/absolute/path/to/github-app.pem
+
+REPO_CONTEXT_GITHUB_APP_SLUG=your-github-app-slug
+REPO_CONTEXT_GITHUB_CLIENT_ID=Iv1.example
+REPO_CONTEXT_GITHUB_CLIENT_SECRET=<github-app-client-secret>
 
 PORT=3000
 ```
 
+Generate the lookup and encryption keys independently, for example:
+
+```bash
+openssl rand -base64 32
+```
+
+MCP OAuth and GitHub OAuth serve different purposes:
+
+- MCP OAuth authenticates the MCP user.
+- GitHub OAuth is temporary and is used during repository connection.
+- Repository access after connection uses the GitHub App installation.
+- GitHub user access and refresh tokens are not persisted as repository
+  connection data.
+
+When GitHub connect is enabled, configure the GitHub App with:
+
+```text
+Setup URL:
+https://mcp.example.com/connect/github/setup
+
+Callback URL:
+https://mcp.example.com/connect/github/callback
+```
+
+`REPO_CONTEXT_GITHUB_APP_SLUG`, `REPO_CONTEXT_GITHUB_CLIENT_ID`, and
+`REPO_CONTEXT_GITHUB_CLIENT_SECRET` must either all be configured or
+all be absent. Partial configuration fails closed.
+
+Do not configure optional capability profiles in OAuth mode.
+
 Keep the GitHub App private key outside the repository.
 
-Do not commit `.env` or private key files.
+Do not commit `.env`, private keys, OAuth client secrets, connection
+encryption keys, or user lookup keys.
 
 ## Optional issue index
 
