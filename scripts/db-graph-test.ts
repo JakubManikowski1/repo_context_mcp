@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   buildDbGraph,
+  focusDbGraph,
   parsePocketBaseMigrations,
   parsePocketBaseSchema,
   renderDbGraphMermaid,
@@ -463,6 +464,195 @@ function main() {
           item.path
             === migrationPathA,
       ),
+  );
+
+  const focusSource =
+    buildDbGraph(
+      [
+        collection(
+          "countries",
+          [],
+        ),
+        collection(
+          "clients",
+          [
+            {
+              name:
+                "country",
+              type:
+                "relation",
+              targetCollection:
+                "countries",
+            },
+          ],
+        ),
+        collection(
+          "invoices",
+          [
+            {
+              name:
+                "client",
+              type:
+                "relation",
+              targetCollection:
+                "clients",
+            },
+            {
+              name:
+                "missing",
+              type:
+                "relation",
+              targetCollection:
+                "missing_collection",
+            },
+          ],
+        ),
+        collection(
+          "invoice_items",
+          [
+            {
+              name:
+                "invoice",
+              type:
+                "relation",
+              targetCollection:
+                "invoices",
+            },
+            {
+              name:
+                "tag",
+              type:
+                "relation",
+              targetCollection:
+                "tags",
+            },
+          ],
+        ),
+        collection(
+          "tags",
+          [],
+        ),
+      ],
+    );
+
+  const focusedInvoices =
+    focusDbGraph(
+      focusSource,
+      [
+        "INVOICES",
+      ],
+    );
+
+  assert.deepEqual(
+    focusedInvoices
+      .nodes
+      .map(
+        (node) =>
+          node.name,
+      ),
+    [
+      "clients",
+      "invoices",
+      "invoice_items",
+    ],
+  );
+
+  assert.deepEqual(
+    focusedInvoices
+      .edges
+      .map(
+        (edge) =>
+          `${edge.source}.${edge.field}->${edge.target}`,
+      ),
+    [
+      "invoices.client->clients",
+      "invoice_items.invoice->invoices",
+    ],
+  );
+
+  assert.ok(
+    focusedInvoices
+      .edges
+      .every(
+        (edge) => {
+          const names =
+            new Set(
+              focusedInvoices
+                .nodes
+                .map(
+                  (node) =>
+                    node.name,
+                ),
+            );
+
+          return (
+            names.has(
+              edge.source,
+            )
+            && names.has(
+              edge.target,
+            )
+          );
+        },
+      ),
+  );
+
+  const focusedMermaid =
+    renderDbGraphMermaid(
+      focusedInvoices,
+    );
+
+  assert.ok(
+    focusedMermaid.includes(
+      "  clients {",
+    ),
+  );
+
+  assert.ok(
+    focusedMermaid.includes(
+      "  invoices {",
+    ),
+  );
+
+  assert.ok(
+    focusedMermaid.includes(
+      "  invoice_items {",
+    ),
+  );
+
+  assert.ok(
+    !focusedMermaid.includes(
+      "  countries {",
+    ),
+  );
+
+  assert.ok(
+    !focusedMermaid.includes(
+      "  tags {",
+    ),
+  );
+
+  assert.ok(
+    !focusedMermaid.includes(
+      "missing_collection",
+    ),
+  );
+
+  const missingFocus =
+    focusDbGraph(
+      focusSource,
+      [
+        "does_not_exist",
+      ],
+    );
+
+  assert.deepEqual(
+    missingFocus,
+    {
+      nodes: [],
+      edges: [],
+      evidence: [],
+    },
   );
 
   console.log(

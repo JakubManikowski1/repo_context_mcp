@@ -9,6 +9,7 @@ import {
 
 import {
   buildDbGraph,
+  focusDbGraph,
   parsePocketBaseMigrations,
   parsePocketBaseSchema,
   renderDbGraphMermaid,
@@ -127,19 +128,33 @@ export function registerDbMermaidTools(server: McpServer) {
         sourceFiles = readable.map((x) => x.path);
       }
 
-      if (requestedCollections?.length) {
-        const wanted = new Set(
-          requestedCollections.map((x) => x.toLowerCase()),
-        );
-
-        parsedCollections = parsedCollections.filter((collection) =>
-          wanted.has(collection.name.toLowerCase()),
-        );
-      }
-
-      const graph =
+      const fullGraph =
         buildDbGraph(
           parsedCollections,
+        );
+
+      const graph =
+        requestedCollections?.length
+          ? focusDbGraph(
+              fullGraph,
+              requestedCollections,
+            )
+          : fullGraph;
+
+      const graphCollectionNames =
+        new Set(
+          graph.nodes.map(
+            (node) =>
+              node.name,
+          ),
+        );
+
+      const selectedCollections =
+        parsedCollections.filter(
+          (collection) =>
+            graphCollectionNames.has(
+              collection.name,
+            ),
         );
 
       const diagram =
@@ -158,8 +173,8 @@ export function registerDbMermaidTools(server: McpServer) {
                 head: currentHead,
                 source,
                 sourceFiles,
-                collectionCount: parsedCollections.length,
-                collections: parsedCollections.map((collection) => ({
+                collectionCount: selectedCollections.length,
+                collections: selectedCollections.map((collection) => ({
                   name:
                     collection.name,
                   fields:

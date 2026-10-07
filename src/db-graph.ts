@@ -660,6 +660,139 @@ export function buildDbGraph(
   };
 }
 
+export function focusDbGraph(
+  graph: DbGraph,
+  requestedCollections:
+    readonly string[],
+): DbGraph {
+  const wanted =
+    new Set(
+      requestedCollections
+        .map(
+          (name) =>
+            name
+              .trim()
+              .toLowerCase(),
+        )
+        .filter(
+          Boolean,
+        ),
+    );
+
+  if (
+    wanted.size === 0
+  ) {
+    return graph;
+  }
+
+  const existingNames =
+    new Set(
+      graph.nodes.map(
+        (node) =>
+          node.name,
+      ),
+    );
+
+  const focusedNames =
+    new Set(
+      graph.nodes
+        .filter(
+          (node) =>
+            wanted.has(
+              node.name
+                .toLowerCase(),
+            ),
+        )
+        .map(
+          (node) =>
+            node.name,
+        ),
+    );
+
+  if (
+    focusedNames.size === 0
+  ) {
+    return {
+      nodes: [],
+      edges: [],
+      evidence: [],
+    };
+  }
+
+  const selectedEdges:
+    DbGraphEdge[] = [];
+
+  const includedNames =
+    new Set(
+      focusedNames,
+    );
+
+  for (
+    const edge
+    of graph.edges
+  ) {
+    if (
+      !existingNames.has(
+        edge.source,
+      )
+      || !existingNames.has(
+        edge.target,
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      !focusedNames.has(
+        edge.source,
+      )
+      && !focusedNames.has(
+        edge.target,
+      )
+    ) {
+      continue;
+    }
+
+    selectedEdges.push(
+      edge,
+    );
+
+    includedNames.add(
+      edge.source,
+    );
+
+    includedNames.add(
+      edge.target,
+    );
+  }
+
+  const selectedNodes =
+    graph.nodes.filter(
+      (node) =>
+        includedNames.has(
+          node.name,
+        ),
+    );
+
+  return {
+    nodes:
+      selectedNodes,
+    edges:
+      selectedEdges,
+    evidence:
+      mergeEvidence(
+        ...selectedNodes.map(
+          (node) =>
+            node.evidence,
+        ),
+        ...selectedEdges.map(
+          (edge) =>
+            edge.evidence,
+        ),
+      ),
+  };
+}
+
 function safeMermaidName(
   value: string,
 ): string {
