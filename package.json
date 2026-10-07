@@ -8,8 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run test:surface && npm run test:crypto",
+    "test": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store",
     "test:crypto": "tsx scripts/connection-crypto-test.ts",
+    "test:store": "tsx scripts/connection-store-test.ts",
     "check:github": "tsx scripts/check-github.ts",
     "test:surface": "npm run build && tsx scripts/tool-surface-test.ts"
   },
@@ -24,17 +25,19 @@
   "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/express": "^2.0.1",
+    "@modelcontextprotocol/express": "^2.0.2",
     "@modelcontextprotocol/node": "^2.1.0",
-    "@modelcontextprotocol/sdk": "^1.30.1",
-    "@modelcontextprotocol/server": "^2.1.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "@octokit/auth-app": "^8.3.1",
     "@octokit/rest": "^22.0.1",
+    "better-sqlite3": "^13.0.3",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.2",
     "tsx": "^4.23.15",
