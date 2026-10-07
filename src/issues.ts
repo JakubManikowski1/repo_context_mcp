@@ -3,15 +3,13 @@ import * as z from "zod/v4";
 
 import { fetchIssueDetails } from "./issue-details.js";
 import {
-  createLegacyRepositoryAccess,
   type RepositoryToolAccess,
 } from "./repository-access.js";
 
 export function registerIssueTools(
   server: McpServer,
   access:
-    RepositoryToolAccess =
-      createLegacyRepositoryAccess(),
+    RepositoryToolAccess,
 ) {
   server.registerTool(
     "issues_list",

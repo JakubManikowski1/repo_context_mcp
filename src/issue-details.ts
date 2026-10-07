@@ -1,11 +1,10 @@
-import {
-  getLegacyRepositoryContext,
-  type RepositoryContext,
+import type {
+  RepositoryContext,
 } from "./repository-context.js";
 
 export async function fetchIssueDetails(
   number: number,
-  repository: RepositoryContext = getLegacyRepositoryContext(),
+  repository: RepositoryContext,
 ) {
   const octokit = repository.octokit;
 

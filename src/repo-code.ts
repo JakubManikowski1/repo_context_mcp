@@ -6,7 +6,6 @@ import type {
 } from "./repository-context.js";
 
 import {
-  createLegacyRepositoryAccess,
   type RepositoryToolAccess,
 } from "./repository-access.js";
 import {
@@ -952,10 +951,9 @@ function consumeRepoCodeTurnBudget(
 
 export function registerRepoCodeTools(
   server: McpServer,
-  requestId?: string,
   access:
-    RepositoryToolAccess =
-      createLegacyRepositoryAccess(),
+    RepositoryToolAccess,
+  requestId?: string,
 ) {
 
   server.registerTool(

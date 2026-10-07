@@ -1,6 +1,5 @@
-import {
-  getLegacyRepositoryContext,
-  type RepositoryContext,
+import type {
+  RepositoryContext,
 } from "./repository-context.js";
 
 import {
@@ -29,9 +28,7 @@ export interface RepositoryToolAccess {
 }
 
 export function createLegacyRepositoryAccess(
-  repository:
-    RepositoryContext =
-      getLegacyRepositoryContext(),
+  repository: RepositoryContext,
 ): RepositoryToolAccess {
   return {
     async list() {

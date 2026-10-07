@@ -8,7 +8,6 @@ import type {
 } from "./repository-context.js";
 
 import {
-  createLegacyRepositoryAccess,
   type RepositoryToolAccess,
 } from "./repository-access.js";
 import { getRepositoryHead } from "./repository-snapshot.js";
@@ -242,8 +241,7 @@ function explicitIssueNumber(query: string): number | null {
 export function registerIssueLookupTools(
   server: McpServer,
   access:
-    RepositoryToolAccess =
-      createLegacyRepositoryAccess(),
+    RepositoryToolAccess,
 ) {
   server.registerTool(
     "issue_lookup",

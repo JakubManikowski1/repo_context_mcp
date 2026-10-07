@@ -10,9 +10,12 @@ import type {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
 import {
-  Client,
-} from "@modelcontextprotocol/sdk/client/index.js";
+  CallToolResultSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+
 import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -135,8 +138,8 @@ async function startClient(
 
       registerRepoCodeTools(
         server,
-        "tool-isolation-request",
         access,
+        "tool-isolation-request",
       );
 
       return server;
@@ -231,20 +234,25 @@ async function expectToolDenied(
 }
 
 function parseTextResult(
-  result: Awaited<
-    ReturnType<Client["callTool"]>
-  >,
+  result: unknown,
 ): unknown {
+  const parsed =
+    CallToolResultSchema.parse(result);
+
   const entry =
-    result.content?.find(
+    parsed.content.find(
       (item) =>
         item.type === "text",
     );
 
-  assert.ok(
-    entry &&
-      entry.type === "text",
-  );
+  if (
+    !entry ||
+    entry.type !== "text"
+  ) {
+    throw new Error(
+      "Expected text tool result",
+    );
+  }
 
   return JSON.parse(entry.text);
 }

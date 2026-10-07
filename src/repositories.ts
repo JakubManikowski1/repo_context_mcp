@@ -5,15 +5,13 @@ import type {
 import * as z from "zod/v4";
 
 import {
-  createLegacyRepositoryAccess,
   type RepositoryToolAccess,
 } from "./repository-access.js";
 
 export function registerRepositoryTools(
   server: McpServer,
   access:
-    RepositoryToolAccess =
-      createLegacyRepositoryAccess(),
+    RepositoryToolAccess,
 ): void {
   server.registerTool(
     "repositories_list",

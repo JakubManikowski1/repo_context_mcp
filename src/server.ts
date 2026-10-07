@@ -185,10 +185,10 @@ GENERAL
   );
   registerRepoCodeTools(
     server,
+    repositoryAccess,
     ctx.requestInfo?.headers.get(
       "x-request-id",
     ) ?? undefined,
-    repositoryAccess,
   );
   registerIssueLookupTools(
     server,
