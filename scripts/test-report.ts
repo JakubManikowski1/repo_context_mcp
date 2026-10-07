@@ -78,6 +78,12 @@ const suites:
     },
     {
       label:
+        "Operator MFA",
+      script:
+        "test:operator-mfa",
+    },
+    {
+      label:
         "Auth boundary",
       script:
         "test:auth",
