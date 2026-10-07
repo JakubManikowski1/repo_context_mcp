@@ -3,14 +3,18 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 
 import { featureConfig } from "./config.js";
-import {
-  getLegacyRepositoryContext,
-  type RepositoryContext,
+import type {
+  RepositoryContext,
 } from "./repository-context.js";
 
 import {
-  createLegacyRepositoryAccess,
-} from "./repository-access.js";
+  configureOAuthResourceServer,
+} from "./auth/resource-server.js";
+
+import {
+  createRequestRepositoryAccess,
+  loadServerRuntimeFromEnv,
+} from "./server-runtime.js";
 
 import {
   registerRepositoryTools,
@@ -72,12 +76,17 @@ function registerOptionalProfileTools(
   }
 }
 
-const handler = createMcpHandler((ctx) => {
-  const repository = getLegacyRepositoryContext();
+const serverRuntime =
+  loadServerRuntimeFromEnv();
 
-  const repositoryAccess =
-    createLegacyRepositoryAccess(
-      repository,
+const handler = createMcpHandler((ctx) => {
+  const {
+    repositoryAccess,
+    legacyRepository,
+  } =
+    createRequestRepositoryAccess(
+      serverRuntime,
+      ctx.authInfo,
     );
 
   const server = new McpServer(
@@ -177,10 +186,12 @@ GENERAL
     server,
     repositoryAccess,
   );
-  registerOptionalProfileTools(
-    server,
-    repository,
-  );
+  if (legacyRepository) {
+    registerOptionalProfileTools(
+      server,
+      legacyRepository,
+    );
+  }
 
 
   return server;
@@ -189,9 +200,53 @@ GENERAL
 const app = createMcpExpressApp();
 const nodeHandler = toNodeHandler(handler);
 
-app.all("/mcp", (req, res) => {
-  void nodeHandler(req, res, req.body);
-});
+if (
+  serverRuntime.mode === "oauth"
+) {
+  const { auth } =
+    configureOAuthResourceServer(
+      app,
+      {
+        mcpServerUrl:
+          serverRuntime.mcpServerUrl,
+
+        oauthMetadata:
+          serverRuntime.oauthMetadata,
+
+        verifier:
+          serverRuntime.verifier,
+
+        requiredScopes:
+          serverRuntime.requiredScopes,
+
+        resourceName:
+          "repo_context_mcp",
+      },
+    );
+
+  app.all(
+    "/mcp",
+    auth,
+    (req, res) => {
+      void nodeHandler(
+        req,
+        res,
+        req.body,
+      );
+    },
+  );
+} else {
+  app.all(
+    "/mcp",
+    (req, res) => {
+      void nodeHandler(
+        req,
+        res,
+        req.body,
+      );
+    },
+  );
+}
 
 app.get("/health", (_req, res) => {
   res.json({
