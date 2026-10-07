@@ -1,16 +1,24 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
-import { getOctokit, githubConfig } from "./github.js";
 import { fetchIssueDetails } from "./issue-details.js";
+import {
+  type RepositoryToolAccess,
+} from "./repository-access.js";
 
-export function registerIssueTools(server: McpServer) {
+export function registerIssueTools(
+  server: McpServer,
+  access:
+    RepositoryToolAccess,
+) {
   server.registerTool(
     "issues_list",
     {
       description:
         "List GitHub issues from the configured repository. Pull requests are excluded.",
       inputSchema: z.object({
+        repository_id:
+          z.string().min(1).optional(),
         state: z.enum(["open", "closed", "all"]).optional(),
         labels: z.array(z.string()).optional(),
         limit: z.number().int().min(1).max(50).optional(),
@@ -22,12 +30,22 @@ export function registerIssueTools(server: McpServer) {
         openWorldHint: true,
       },
     },
-    async ({ state = "open", labels, limit = 20 }) => {
-      const octokit = getOctokit();
+    async ({
+      repository_id,
+      state = "open",
+      labels,
+      limit = 20,
+    }) => {
+      const repository =
+        await access.resolve(
+          repository_id,
+        );
+
+      const octokit = repository.octokit;
 
       const response = await octokit.rest.issues.listForRepo({
-        owner: githubConfig.owner,
-        repo: githubConfig.repo,
+        owner: repository.owner,
+        repo: repository.repo,
         state,
         labels: labels?.join(","),
         per_page: Math.min(100, limit * 2),
@@ -69,6 +87,8 @@ export function registerIssueTools(server: McpServer) {
       description:
         "Get one GitHub issue including its body, labels, assignees and comments.",
       inputSchema: z.object({
+        repository_id:
+          z.string().min(1).optional(),
         number: z.number().int().positive(),
       }),
       annotations: {
@@ -78,8 +98,20 @@ export function registerIssueTools(server: McpServer) {
         openWorldHint: true,
       },
     },
-    async ({ number }) => {
-      const result = await fetchIssueDetails(number);
+    async ({
+      number,
+      repository_id,
+    }) => {
+      const repository =
+        await access.resolve(
+          repository_id,
+        );
+
+      const result =
+        await fetchIssueDetails(
+          number,
+          repository,
+        );
 
       return {
         content: [

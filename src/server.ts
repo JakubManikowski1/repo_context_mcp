@@ -3,6 +3,30 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 
 import { featureConfig } from "./config.js";
+import type {
+  RepositoryContext,
+} from "./repository-context.js";
+
+import {
+  configureOAuthResourceServer,
+} from "./auth/resource-server.js";
+
+import {
+  getAuthenticatedPrincipal,
+} from "./auth/principal.js";
+
+import {
+  createGitHubConnectRouter,
+} from "./connections/github-connect-router.js";
+
+import {
+  createRequestRepositoryAccess,
+  loadServerRuntimeFromEnv,
+} from "./server-runtime.js";
+
+import {
+  registerRepositoryTools,
+} from "./repositories.js";
 
 import { registerIssueTools } from "./issues.js";
 import { registerUiTools } from "./ui.js";
@@ -17,7 +41,62 @@ import { registerDbTools } from "./db.js";
 import { registerDbImpactTools } from "./db-impact.js";
 import { registerDbMermaidTools } from "./db-mermaid.js";
 
+function registerOptionalProfileTools(
+  server: McpServer,
+  repository: RepositoryContext,
+) {
+  const optionalProfilesEnabled =
+    featureConfig.ui ||
+    featureConfig.history ||
+    featureConfig.workflow ||
+    featureConfig.db;
+
+  if (!optionalProfilesEnabled) {
+    return;
+  }
+
+  if (repository.source !== "legacy-env") {
+    throw new Error(
+      "Optional profiles are currently supported only by the legacy-env repository context. " +
+      "They must be migrated to RepositoryContext before being enabled for connection-backed repositories.",
+    );
+  }
+
+  if (featureConfig.ui) {
+    registerUiTools(server);
+    registerUiInventoryTools(server);
+    registerUiFlowTools(server);
+  }
+
+  if (featureConfig.history) {
+    registerHistoryTools(server);
+  }
+
+  if (featureConfig.workflow) {
+    registerGuidanceTools(server);
+    registerCommandTools(server);
+  }
+
+  if (featureConfig.db) {
+    registerDbTools(server);
+    registerDbImpactTools(server);
+    registerDbMermaidTools(server);
+  }
+}
+
+const serverRuntime =
+  loadServerRuntimeFromEnv();
+
 const handler = createMcpHandler((ctx) => {
+  const {
+    repositoryAccess,
+    legacyRepository,
+  } =
+    createRequestRepositoryAccess(
+      serverRuntime,
+      ctx.authInfo,
+    );
+
   const server = new McpServer(
     {
       name: "repo_context_mcp",
@@ -95,33 +174,31 @@ GENERAL
 
 
 
-  registerIssueTools(server);
+  registerRepositoryTools(
+    server,
+    repositoryAccess,
+  );
+
+  registerIssueTools(
+    server,
+    repositoryAccess,
+  );
   registerRepoCodeTools(
     server,
+    repositoryAccess,
     ctx.requestInfo?.headers.get(
       "x-request-id",
     ) ?? undefined,
   );
-  registerIssueLookupTools(server);
-  if (featureConfig.ui) {
-    registerUiTools(server);
-    registerUiInventoryTools(server);
-    registerUiFlowTools(server);
-  }
-
-  if (featureConfig.history) {
-    registerHistoryTools(server);
-  }
-
-  if (featureConfig.workflow) {
-    registerGuidanceTools(server);
-    registerCommandTools(server);
-  }
-
-  if (featureConfig.db) {
-    registerDbTools(server);
-    registerDbImpactTools(server);
-    registerDbMermaidTools(server);
+  registerIssueLookupTools(
+    server,
+    repositoryAccess,
+  );
+  if (legacyRepository) {
+    registerOptionalProfileTools(
+      server,
+      legacyRepository,
+    );
   }
 
 
@@ -131,9 +208,97 @@ GENERAL
 const app = createMcpExpressApp();
 const nodeHandler = toNodeHandler(handler);
 
-app.all("/mcp", (req, res) => {
-  void nodeHandler(req, res, req.body);
-});
+if (
+  serverRuntime.mode === "oauth"
+) {
+  const { auth } =
+    configureOAuthResourceServer(
+      app,
+      {
+        mcpServerUrl:
+          serverRuntime.mcpServerUrl,
+
+        oauthMetadata:
+          serverRuntime.oauthMetadata,
+
+        verifier:
+          serverRuntime.verifier,
+
+        requiredScopes:
+          serverRuntime.requiredScopes,
+
+        resourceName:
+          "repo_context_mcp",
+      },
+    );
+
+  if (
+    serverRuntime.githubConnect
+  ) {
+    app.use(
+      "/connect/github",
+
+      createGitHubConnectRouter({
+        authenticate:
+          auth,
+
+        getPrincipal:
+          (request) =>
+            getAuthenticatedPrincipal(
+              request.auth,
+            ),
+
+        oauthFlow:
+          serverRuntime
+            .githubConnect
+            .oauthFlow,
+
+        userRepositoryConnector:
+          serverRuntime
+            .githubConnect
+            .userRepositoryConnector,
+
+        repositorySelection:
+          serverRuntime
+            .githubConnect
+            .repositorySelection,
+
+        installationSelection:
+          serverRuntime
+            .githubConnect
+            .installationSelection,
+
+        cookieSecure:
+          serverRuntime
+            .githubConnect
+            .cookieSecure,
+      }),
+    );
+  }
+
+  app.all(
+    "/mcp",
+    auth,
+    (req, res) => {
+      void nodeHandler(
+        req,
+        res,
+        req.body,
+      );
+    },
+  );
+} else {
+  app.all(
+    "/mcp",
+    (req, res) => {
+      void nodeHandler(
+        req,
+        res,
+        req.body,
+      );
+    },
+  );
+}
 
 app.get("/health", (_req, res) => {
   res.json({

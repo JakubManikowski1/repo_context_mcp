@@ -3,7 +3,13 @@ import * as z from "zod/v4";
 
 import { issueIndexConfig } from "./config.js";
 import { fetchIssueDetails } from "./issue-details.js";
-import { getOctokit, githubConfig } from "./github.js";
+import type {
+  RepositoryContext,
+} from "./repository-context.js";
+
+import {
+  type RepositoryToolAccess,
+} from "./repository-access.js";
 import { getRepositoryHead } from "./repository-snapshot.js";
 
 type IndexItem = {
@@ -15,6 +21,7 @@ type IndexItem = {
 
 let indexCache:
   | {
+      repositoryKey: string;
       path: string;
       sha: string;
       items: IndexItem[];
@@ -82,7 +89,9 @@ function parseIssueIndex(markdown: string): IndexItem[] {
   return items;
 }
 
-async function getIssueIndex(): Promise<{
+async function getIssueIndex(
+  repository: RepositoryContext,
+): Promise<{
   items: IndexItem[];
   cacheHit: boolean;
   error: string | null;
@@ -98,12 +107,12 @@ async function getIssueIndex(): Promise<{
   }
 
   try {
-    const octokit = getOctokit();
-    const head = await getRepositoryHead();
+    const octokit = repository.octokit;
+    const head = await getRepositoryHead(repository);
 
     const response = await octokit.rest.repos.getContent({
-      owner: githubConfig.owner,
-      repo: githubConfig.repo,
+      owner: repository.owner,
+      repo: repository.repo,
       path,
       ref: head,
     });
@@ -122,6 +131,7 @@ async function getIssueIndex(): Promise<{
 
     if (
       indexCache &&
+      indexCache.repositoryKey === repository.key &&
       indexCache.path === path &&
       indexCache.sha === response.data.sha
     ) {
@@ -140,6 +150,7 @@ async function getIssueIndex(): Promise<{
     const items = parseIssueIndex(markdown);
 
     indexCache = {
+      repositoryKey: repository.key,
       path,
       sha: response.data.sha,
       items,
@@ -229,6 +240,8 @@ function explicitIssueNumber(query: string): number | null {
 
 export function registerIssueLookupTools(
   server: McpServer,
+  access:
+    RepositoryToolAccess,
 ) {
   server.registerTool(
     "issue_lookup",
@@ -236,6 +249,8 @@ export function registerIssueLookupTools(
       description:
         "Resolve a GitHub issue from an issue number, title, description or optional repository issue index. GitHub Issues remains the source of truth.",
       inputSchema: z.object({
+        repository_id:
+          z.string().min(1).optional(),
         query: z.string().min(1),
         maxCandidates: z
           .number()
@@ -252,15 +267,21 @@ export function registerIssueLookupTools(
       },
     },
     async ({
+      repository_id,
       query,
       maxCandidates = 5,
     }) => {
+      const repository =
+        await access.resolve(
+          repository_id,
+        );
+
       const started = performance.now();
 
       const directNumber = explicitIssueNumber(query);
 
       if (directNumber) {
-        const issue = await fetchIssueDetails(directNumber);
+        const issue = await fetchIssueDetails(directNumber, repository);
 
         return {
           content: [
@@ -288,7 +309,7 @@ export function registerIssueLookupTools(
 
       const indexStarted = performance.now();
 
-      const index = await getIssueIndex();
+      const index = await getIssueIndex(repository);
 
       const indexMs = Math.round(
         performance.now() - indexStarted,
@@ -319,9 +340,7 @@ export function registerIssueLookupTools(
         );
 
       if (indexConfident) {
-        const issue = await fetchIssueDetails(
-          topIndex.issue,
-        );
+        const issue = await fetchIssueDetails(topIndex.issue, repository);
 
         return {
           content: [
@@ -354,13 +373,13 @@ export function registerIssueLookupTools(
         };
       }
 
-      const octokit = getOctokit();
+      const octokit = repository.octokit;
 
       const searchStarted = performance.now();
 
       const response =
         await octokit.rest.search.issuesAndPullRequests({
-          q: `${query} repo:${githubConfig.owner}/${githubConfig.repo} is:issue`,
+          q: `${query} repo:${repository.owner}/${repository.repo} is:issue`,
           per_page: Math.min(20, maxCandidates * 2),
         });
 
@@ -431,7 +450,7 @@ export function registerIssueLookupTools(
         };
       }
 
-      const issue = await fetchIssueDetails(top.number);
+      const issue = await fetchIssueDetails(top.number, repository);
 
       return {
         content: [

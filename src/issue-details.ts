@@ -1,18 +1,23 @@
-import { getOctokit, githubConfig } from "./github.js";
+import type {
+  RepositoryContext,
+} from "./repository-context.js";
 
-export async function fetchIssueDetails(number: number) {
-  const octokit = getOctokit();
+export async function fetchIssueDetails(
+  number: number,
+  repository: RepositoryContext,
+) {
+  const octokit = repository.octokit;
 
   const [issueResponse, commentsResponse] = await Promise.all([
     octokit.rest.issues.get({
-      owner: githubConfig.owner,
-      repo: githubConfig.repo,
+      owner: repository.owner,
+      repo: repository.repo,
       issue_number: number,
     }),
 
     octokit.rest.issues.listComments({
-      owner: githubConfig.owner,
-      repo: githubConfig.repo,
+      owner: repository.owner,
+      repo: repository.repo,
       issue_number: number,
       per_page: 100,
     }),
