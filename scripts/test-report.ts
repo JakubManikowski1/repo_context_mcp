@@ -72,6 +72,12 @@ const suites:
     },
     {
       label:
+        "Operator reveal",
+      script:
+        "test:operator-reveal",
+    },
+    {
+      label:
         "Auth boundary",
       script:
         "test:auth",
