@@ -3,6 +3,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 
 import { featureConfig } from "./config.js";
+import { getLegacyRepositoryContext } from "./repository-context.js";
 
 import { registerIssueTools } from "./issues.js";
 import { registerUiTools } from "./ui.js";
@@ -18,6 +19,8 @@ import { registerDbImpactTools } from "./db-impact.js";
 import { registerDbMermaidTools } from "./db-mermaid.js";
 
 const handler = createMcpHandler((ctx) => {
+  const repository = getLegacyRepositoryContext();
+
   const server = new McpServer(
     {
       name: "repo_context_mcp",
@@ -95,14 +98,15 @@ GENERAL
 
 
 
-  registerIssueTools(server);
+  registerIssueTools(server, repository);
   registerRepoCodeTools(
     server,
     ctx.requestInfo?.headers.get(
       "x-request-id",
     ) ?? undefined,
+    repository,
   );
-  registerIssueLookupTools(server);
+  registerIssueLookupTools(server, repository);
   if (featureConfig.ui) {
     registerUiTools(server);
     registerUiInventoryTools(server);

@@ -1,10 +1,16 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
-import { getOctokit, githubConfig } from "./github.js";
 import { fetchIssueDetails } from "./issue-details.js";
+import {
+  getLegacyRepositoryContext,
+  type RepositoryContext,
+} from "./repository-context.js";
 
-export function registerIssueTools(server: McpServer) {
+export function registerIssueTools(
+  server: McpServer,
+  repository: RepositoryContext = getLegacyRepositoryContext(),
+) {
   server.registerTool(
     "issues_list",
     {
@@ -23,11 +29,11 @@ export function registerIssueTools(server: McpServer) {
       },
     },
     async ({ state = "open", labels, limit = 20 }) => {
-      const octokit = getOctokit();
+      const octokit = repository.octokit;
 
       const response = await octokit.rest.issues.listForRepo({
-        owner: githubConfig.owner,
-        repo: githubConfig.repo,
+        owner: repository.owner,
+        repo: repository.repo,
         state,
         labels: labels?.join(","),
         per_page: Math.min(100, limit * 2),
@@ -79,7 +85,10 @@ export function registerIssueTools(server: McpServer) {
       },
     },
     async ({ number }) => {
-      const result = await fetchIssueDetails(number);
+      const result = await fetchIssueDetails(
+        number,
+        repository,
+      );
 
       return {
         content: [

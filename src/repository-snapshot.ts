@@ -1,24 +1,31 @@
-import { getOctokit, githubConfig } from "./github.js";
+import {
+  getLegacyRepositoryContext,
+  type RepositoryContext,
+} from "./repository-context.js";
 
 export type RepoTreeIndex = {
   head: string;
   paths: string[];
 };
 
-let repoTreeCache: RepoTreeIndex | null = null;
+let repoTreeCache: {
+  repositoryKey: string;
+  index: RepoTreeIndex;
+} | null = null;
 
 let repoTreeInFlight: {
+  repositoryKey: string;
   head: string;
   promise: Promise<RepoTreeIndex>;
 } | null = null;
 
-export async function getRepositoryHead(): Promise<string> {
-  const octokit = getOctokit();
-
-  const response = await octokit.rest.repos.getBranch({
-    owner: githubConfig.owner,
-    repo: githubConfig.repo,
-    branch: githubConfig.branch,
+export async function getRepositoryHead(
+  repository: RepositoryContext = getLegacyRepositoryContext(),
+): Promise<string> {
+  const response = await repository.octokit.rest.repos.getBranch({
+    owner: repository.owner,
+    repo: repository.repo,
+    branch: repository.branch,
   });
 
   return response.data.commit.sha;
@@ -26,6 +33,7 @@ export async function getRepositoryHead(): Promise<string> {
 
 export async function getRepoTreeIndex(
   head: string,
+  repository: RepositoryContext = getLegacyRepositoryContext(),
 ): Promise<{
   index: RepoTreeIndex;
   cacheHit: boolean;
@@ -33,10 +41,11 @@ export async function getRepoTreeIndex(
 }> {
   if (
     repoTreeCache &&
-    repoTreeCache.head === head
+    repoTreeCache.repositoryKey === repository.key &&
+    repoTreeCache.index.head === head
   ) {
     return {
-      index: repoTreeCache,
+      index: repoTreeCache.index,
       cacheHit: true,
       treeMs: 0,
     };
@@ -44,6 +53,7 @@ export async function getRepoTreeIndex(
 
   if (
     repoTreeInFlight &&
+    repoTreeInFlight.repositoryKey === repository.key &&
     repoTreeInFlight.head === head
   ) {
     const started = performance.now();
@@ -59,16 +69,16 @@ export async function getRepoTreeIndex(
     };
   }
 
-  const octokit = getOctokit();
   const started = performance.now();
 
   const promise = (async () => {
-    const response = await octokit.rest.git.getTree({
-      owner: githubConfig.owner,
-      repo: githubConfig.repo,
-      tree_sha: head,
-      recursive: "true",
-    });
+    const response =
+      await repository.octokit.rest.git.getTree({
+        owner: repository.owner,
+        repo: repository.repo,
+        tree_sha: head,
+        recursive: "true",
+      });
 
     if (response.data.truncated) {
       throw new Error(
@@ -87,12 +97,16 @@ export async function getRepoTreeIndex(
         .map((item) => item.path!),
     };
 
-    repoTreeCache = index;
+    repoTreeCache = {
+      repositoryKey: repository.key,
+      index,
+    };
 
     return index;
   })();
 
   repoTreeInFlight = {
+    repositoryKey: repository.key,
     head,
     promise,
   };
@@ -108,7 +122,10 @@ export async function getRepoTreeIndex(
       ),
     };
   } finally {
-    if (repoTreeInFlight?.head === head) {
+    if (
+      repoTreeInFlight?.repositoryKey === repository.key &&
+      repoTreeInFlight.head === head
+    ) {
       repoTreeInFlight = null;
     }
   }

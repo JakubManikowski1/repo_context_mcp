@@ -1,7 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
-import { getOctokit, githubConfig } from "./github.js";
+import {
+  getLegacyRepositoryContext,
+  type RepositoryContext,
+} from "./repository-context.js";
 import {
   getRepositoryHead,
   getRepoTreeIndex,
@@ -131,15 +134,16 @@ function isDocumentationPath(path: string): boolean {
 }
 
 async function readFile(
+  repository: RepositoryContext,
   path: string,
   ref: string,
 ) {
-  const octokit = getOctokit();
+  const octokit = repository.octokit;
 
   try {
     const response = await octokit.rest.repos.getContent({
-      owner: githubConfig.owner,
-      repo: githubConfig.repo,
+      owner: repository.owner,
+      repo: repository.repo,
       path,
       ref,
     });
@@ -835,6 +839,7 @@ const repoCodeTurnBudgets = new Map<
 >();
 
 function consumeRepoCodeTurnBudget(
+  repositoryKey: string,
   requestId: string | undefined,
   currentHead: string,
 ) {
@@ -850,6 +855,11 @@ function consumeRepoCodeTurnBudget(
     };
   }
 
+  const budgetKey = JSON.stringify([
+    repositoryKey,
+    requestId,
+  ]);
+
   const now = Date.now();
 
   for (const [key, value] of repoCodeTurnBudgets) {
@@ -862,7 +872,7 @@ function consumeRepoCodeTurnBudget(
   }
 
   const current =
-    repoCodeTurnBudgets.get(requestId);
+    repoCodeTurnBudgets.get(budgetKey);
 
   // main zmienił się w trakcie tej samej odpowiedzi.
   // Cały wcześniejszy kontekst repo jest nieważny.
@@ -873,7 +883,7 @@ function consumeRepoCodeTurnBudget(
     current.head !== currentHead
   ) {
     repoCodeTurnBudgets.set(
-      requestId,
+      budgetKey,
       {
         used: 0,
         touchedAt: now,
@@ -913,7 +923,7 @@ function consumeRepoCodeTurnBudget(
     (current?.used ?? 0) + 1;
 
   repoCodeTurnBudgets.set(
-    requestId,
+    budgetKey,
     {
       used,
       touchedAt: now,
@@ -936,6 +946,7 @@ function consumeRepoCodeTurnBudget(
 export function registerRepoCodeTools(
   server: McpServer,
   requestId?: string,
+  repository: RepositoryContext = getLegacyRepositoryContext(),
 ) {
 
   server.registerTool(
@@ -964,13 +975,14 @@ export function registerRepoCodeTools(
       maxChars = DEFAULT_MAX_CHARS,
       includeDocumentation = false,
     }) => {
-      const octokit = getOctokit();
+      const octokit = repository.octokit;
 
       const currentHead =
-        await getRepositoryHead();
+        await getRepositoryHead(repository);
 
       const turnBudget =
         consumeRepoCodeTurnBudget(
+          repository.key,
           requestId,
           currentHead,
         );
@@ -1041,6 +1053,7 @@ export function registerRepoCodeTools(
         filePath: string,
       ) =>
         readFile(
+          repository,
           filePath,
           currentHead,
         );
@@ -1235,10 +1248,10 @@ export function registerRepoCodeTools(
                   },
 
                   repository:
-                    `${githubConfig.owner}/${githubConfig.repo}`,
+                    `${repository.owner}/${repository.repo}`,
 
                   branch:
-                    githubConfig.branch,
+                    repository.branch,
 
                   head: currentHead,
 
@@ -1361,7 +1374,7 @@ export function registerRepoCodeTools(
 
       try {
         const treeResult =
-          await getRepoTreeIndex(head);
+          await getRepoTreeIndex(head, repository);
 
         treeCacheHit =
           treeResult.cacheHit;
@@ -1427,7 +1440,7 @@ export function registerRepoCodeTools(
           remoteSearchTerms.map(
             async (query) => {
               const qualifiers = [
-                `repo:${githubConfig.owner}/${githubConfig.repo}`,
+                `repo:${repository.owner}/${repository.repo}`,
 
                 path
                   ? `path:${path}`
@@ -1849,10 +1862,10 @@ export function registerRepoCodeTools(
                 },
 
                 repository:
-                  `${githubConfig.owner}/${githubConfig.repo}`,
+                  `${repository.owner}/${repository.repo}`,
 
                 branch:
-                  githubConfig.branch,
+                  repository.branch,
 
                 head,
 
