@@ -8,9 +8,10 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store",
+    "test": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store && npm run test:resolver",
     "test:crypto": "tsx scripts/connection-crypto-test.ts",
     "test:store": "tsx scripts/connection-store-test.ts",
+    "test:resolver": "tsx scripts/connection-resolver-test.ts",
     "check:github": "tsx scripts/check-github.ts",
     "test:surface": "npm run build && tsx scripts/tool-surface-test.ts"
   },
