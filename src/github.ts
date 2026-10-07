@@ -14,26 +14,53 @@ function required(name: string): string {
   return value;
 }
 
-function requiredNumber(name: string): number {
-  const raw = required(name);
-  const value = Number(raw);
+function positiveSafeInteger(
+  value: string | number,
+  label: string,
+): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number(value);
 
-  if (!Number.isSafeInteger(value) || value <= 0) {
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed <= 0
+  ) {
     throw new Error(
-      `Environment variable ${name} must be a positive integer`,
+      `${label} must be a positive integer`,
     );
   }
 
-  return value;
+  return parsed;
 }
 
-export const githubConfig = {
+function requiredNumber(name: string): number {
+  return positiveSafeInteger(
+    required(name),
+    `Environment variable ${name}`,
+  );
+}
+
+export const githubAppConfig = {
   get appId() {
     return required("GITHUB_APP_ID");
   },
 
+  get privateKeyPath() {
+    return required("GITHUB_PRIVATE_KEY_PATH");
+  },
+};
+
+export const githubConfig = {
+  get appId() {
+    return githubAppConfig.appId;
+  },
+
   get installationId() {
-    return requiredNumber("GITHUB_INSTALLATION_ID");
+    return requiredNumber(
+      "GITHUB_INSTALLATION_ID",
+    );
   },
 
   get owner() {
@@ -49,9 +76,34 @@ export const githubConfig = {
   },
 
   get privateKeyPath() {
-    return required("GITHUB_PRIVATE_KEY_PATH");
+    return githubAppConfig.privateKeyPath;
   },
 };
+
+export function createOctokitForInstallation(
+  installationId: string | number,
+): Octokit {
+  const normalizedInstallationId =
+    positiveSafeInteger(
+      installationId,
+      "GitHub installation ID",
+    );
+
+  const privateKey = fs.readFileSync(
+    githubAppConfig.privateKeyPath,
+    "utf8",
+  );
+
+  return new Octokit({
+    authStrategy: createAppAuth,
+    auth: {
+      appId: githubAppConfig.appId,
+      privateKey,
+      installationId:
+        normalizedInstallationId,
+    },
+  });
+}
 
 let octokit: Octokit | null = null;
 
@@ -60,19 +112,10 @@ export function getOctokit(): Octokit {
     return octokit;
   }
 
-  const privateKey = fs.readFileSync(
-    githubConfig.privateKeyPath,
-    "utf8",
-  );
-
-  octokit = new Octokit({
-    authStrategy: createAppAuth,
-    auth: {
-      appId: githubConfig.appId,
-      privateKey,
-      installationId: githubConfig.installationId,
-    },
-  });
+  octokit =
+    createOctokitForInstallation(
+      githubConfig.installationId,
+    );
 
   return octokit;
 }
