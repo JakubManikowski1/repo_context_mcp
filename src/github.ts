@@ -1,4 +1,3 @@
-import "dotenv/config";
 import fs from "node:fs";
 
 import { createAppAuth } from "@octokit/auth-app";

@@ -171,6 +171,12 @@ REPO_CONTEXT_GITHUB_APP_SLUG=your-github-app-slug
 REPO_CONTEXT_GITHUB_CLIENT_ID=Iv1.example
 REPO_CONTEXT_GITHUB_CLIENT_SECRET=<github-app-client-secret>
 
+# Optional operator sensitive-data access.
+# These three values must be configured together.
+REPO_CONTEXT_OPERATOR_ID=primary-operator
+REPO_CONTEXT_OPERATOR_SUBJECT=<exact-oauth-sub>
+REPO_CONTEXT_OPERATOR_TOTP_SECRET=<base32-totp-secret>
+
 PORT=3000
 ```
 
@@ -201,6 +207,96 @@ https://mcp.example.com/connect/github/callback
 `REPO_CONTEXT_GITHUB_APP_SLUG`, `REPO_CONTEXT_GITHUB_CLIENT_ID`, and
 `REPO_CONTEXT_GITHUB_CLIENT_SECRET` must either all be configured or
 all be absent. Partial configuration fails closed.
+
+### Optional operator sensitive-data access
+
+Operator reveal is disabled unless all three operator variables are configured:
+
+```env
+REPO_CONTEXT_OPERATOR_ID=primary-operator
+REPO_CONTEXT_OPERATOR_SUBJECT=<exact-oauth-sub>
+REPO_CONTEXT_OPERATOR_TOTP_SECRET=<base32-totp-secret>
+```
+
+`REPO_CONTEXT_OPERATOR_ID` is an operator label written to the reveal audit.
+It is not an authentication credential.
+
+The operator identity is bound to:
+
+- the exact OAuth issuer from `REPO_CONTEXT_OAUTH_ISSUER`
+- the exact OAuth `sub` in `REPO_CONTEXT_OPERATOR_SUBJECT`
+
+The TOTP secret must be valid Base32 and decode to at least 20 bytes.
+
+Operator access is OAuth-only. Supplying any operator configuration in
+legacy mode fails closed. Supplying only part of the operator configuration
+also fails closed.
+
+The flow has two HTTP endpoints:
+
+```text
+POST /operator/session
+POST /operator/reveal
+```
+
+Both require the normal OAuth bearer token of the configured operator.
+
+`POST /operator/session` performs the TOTP step-up:
+
+```json
+{
+  "totp_code": "123456"
+}
+```
+
+A successful response contains a short-lived privileged session token:
+
+```json
+{
+  "session_token": "ops1.<opaque-token>",
+  "expires_at": "..."
+}
+```
+
+The privileged session:
+
+- expires after 5 minutes
+- is stored only in process memory
+- is invalidated by a process restart
+- authorizes exactly one reveal attempt
+- cannot be used by another OAuth principal
+
+`POST /operator/reveal` requires the OAuth bearer token, privileged session,
+an exact repository connection ID, and an explicit reason:
+
+```json
+{
+  "session_token": "ops1.<opaque-token>",
+  "connection_id": "<exact-connection-id>",
+  "reason": "Investigate support case 123"
+}
+```
+
+There is intentionally no operator repository list, search, or reveal-all
+endpoint.
+
+Reveal responses are sent with `Cache-Control: no-store`. The internal
+pseudonymous `userLookup` is not returned by the HTTP endpoint.
+
+Valid reveal attempts are audited with one of:
+
+- `success`
+- `not_found`
+- `decrypt_failed`
+
+The audit table is append-only through application code and SQLite triggers.
+This prevents ordinary updates and deletes through the application database
+connection, but it is not tamper-proof against an administrator with direct
+access to the SQLite files.
+
+Invalid TOTP attempts are throttled after 5 failures in a rolling 60-second
+window. TOTP replay tracking and privileged sessions are process-local, so
+both reset when the process restarts.
 
 Do not configure optional capability profiles in OAuth mode.
 
@@ -416,8 +512,16 @@ Recommended deployment rules:
 - never commit `.env`
 - terminate public access through HTTPS
 - protect externally reachable MCP endpoints according to your deployment environment
+- keep operator TOTP secrets outside the repository
+- enable operator reveal only when operationally required
+- treat repository reveal responses as sensitive data
+- protect the repository connection SQLite database and its WAL/SHM files
 
-The current tool set is designed to be read-only.
+The MCP tool set is designed to be read-only.
+
+The optional operator reveal HTTP flow is deliberately separate from the MCP
+tool surface and can decrypt stored repository connection metadata after
+OAuth identity verification and a fresh TOTP step-up.
 
 ## License
 

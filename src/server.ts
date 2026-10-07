@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
