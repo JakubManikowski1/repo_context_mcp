@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { getOctokit } from "../src/github.js";
 
 async function main() {

@@ -72,6 +72,24 @@ const suites:
     },
     {
       label:
+        "Operator reveal",
+      script:
+        "test:operator-reveal",
+    },
+    {
+      label:
+        "Operator MFA",
+      script:
+        "test:operator-mfa",
+    },
+    {
+      label:
+        "Operator HTTP",
+      script:
+        "test:operator-http",
+    },
+    {
+      label:
         "Auth boundary",
       script:
         "test:auth",

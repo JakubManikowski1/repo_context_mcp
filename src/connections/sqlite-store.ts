@@ -9,6 +9,14 @@ import type {
   RepositoryConnectionStore,
 } from "./store.js";
 
+import type {
+  OperatorRepositoryConnectionStore,
+} from "../operator/store.js";
+
+import type {
+  OperatorRevealAuditRecord,
+} from "../operator/types.js";
+
 type RepositoryConnectionRow = {
   id: string;
   user_lookup: string;
@@ -30,7 +38,9 @@ function mapRow(
 }
 
 export class SqliteRepositoryConnectionStore
-  implements RepositoryConnectionStore
+  implements
+    RepositoryConnectionStore,
+    OperatorRepositoryConnectionStore
 {
   private readonly db: Database.Database;
 
@@ -55,6 +65,52 @@ export class SqliteRepositoryConnectionStore
         user_lookup,
         revoked_at
       );
+
+      CREATE TABLE IF NOT EXISTS
+        operator_reveal_audit (
+          id TEXT PRIMARY KEY,
+          operator_id TEXT NOT NULL,
+          connection_id TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          outcome TEXT NOT NULL
+            CHECK (
+              outcome IN (
+                'success',
+                'not_found',
+                'decrypt_failed'
+              )
+            ),
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+      CREATE INDEX IF NOT EXISTS
+        operator_reveal_audit_created_idx
+      ON operator_reveal_audit (
+        created_at,
+        id
+      );
+
+      CREATE TRIGGER IF NOT EXISTS
+        operator_reveal_audit_no_update
+      BEFORE UPDATE ON
+        operator_reveal_audit
+      BEGIN
+        SELECT RAISE(
+          ABORT,
+          'operator_reveal_audit is append-only'
+        );
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS
+        operator_reveal_audit_no_delete
+      BEFORE DELETE ON
+        operator_reveal_audit
+      BEGIN
+        SELECT RAISE(
+          ABORT,
+          'operator_reveal_audit is append-only'
+        );
+      END;
     `);
   }
 
@@ -159,6 +215,76 @@ export class SqliteRepositoryConnectionStore
     return Promise.resolve(
       result.changes === 1,
     );
+  }
+
+  findByIdForOperator(
+    connectionId: string,
+  ): Promise<
+    StoredRepositoryConnection | null
+  > {
+    const row = this.db.prepare(`
+      SELECT
+        id,
+        user_lookup,
+        encrypted_payload,
+        created_at,
+        revoked_at
+      FROM repository_connections
+      WHERE id = ?
+      LIMIT 1
+    `).get(
+      connectionId,
+    ) as
+      RepositoryConnectionRow |
+      undefined;
+
+    return Promise.resolve(
+      row ? mapRow(row) : null,
+    );
+  }
+
+  appendRevealAudit(
+    record:
+      OperatorRevealAuditRecord,
+  ): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO operator_reveal_audit (
+        id,
+        operator_id,
+        connection_id,
+        reason,
+        outcome,
+        created_at
+      )
+      VALUES (
+        @id,
+        @operatorId,
+        @connectionId,
+        @reason,
+        @outcome,
+        @createdAt
+      )
+    `).run({
+      id:
+        record.id,
+
+      operatorId:
+        record.operatorId,
+
+      connectionId:
+        record.connectionId,
+
+      reason:
+        record.reason,
+
+      outcome:
+        record.outcome,
+
+      createdAt:
+        record.createdAt,
+    });
+
+    return Promise.resolve();
   }
 
   close(): void {

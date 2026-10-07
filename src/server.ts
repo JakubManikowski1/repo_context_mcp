@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { createMcpExpressApp } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
@@ -18,6 +19,10 @@ import {
 import {
   createGitHubConnectRouter,
 } from "./connections/github-connect-router.js";
+
+import {
+  createOperatorRouter,
+} from "./operator/router.js";
 
 import {
   createRequestRepositoryAccess,
@@ -231,6 +236,45 @@ if (
           "repo_context_mcp",
       },
     );
+
+  if (
+    serverRuntime.operator
+  ) {
+    app.use(
+      "/operator",
+
+      createOperatorRouter({
+        authenticate:
+          auth,
+
+        getPrincipal:
+          (request) =>
+            getAuthenticatedPrincipal(
+              request.auth,
+            ),
+
+        operatorId:
+          serverRuntime
+            .operator
+            .operatorId,
+
+        operatorPrincipal:
+          serverRuntime
+            .operator
+            .principal,
+
+        sessions:
+          serverRuntime
+            .operator
+            .sessions,
+
+        reveal:
+          serverRuntime
+            .operator
+            .reveal,
+      }),
+    );
+  }
 
   if (
     serverRuntime.githubConnect

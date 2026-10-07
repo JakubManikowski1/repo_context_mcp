@@ -12,6 +12,18 @@ import {
   SqliteRepositoryConnectionStore,
 } from "./connections/sqlite-store.js";
 
+import type {
+  PrincipalIdentity,
+} from "./connections/types.js";
+
+import {
+  OperatorPrivilegedSessionService,
+} from "./operator/privileged-session.js";
+
+import {
+  OperatorSensitiveDataRevealService,
+} from "./operator/reveal.js";
+
 import {
   getLegacyRepositoryContext,
   type RepositoryContext,
@@ -71,6 +83,20 @@ export type GitHubConnectServerRuntime =
     cookieSecure: boolean;
   }>;
 
+export type OperatorServerRuntime =
+  Readonly<{
+    operatorId: string;
+
+    principal:
+      PrincipalIdentity;
+
+    sessions:
+      OperatorPrivilegedSessionService;
+
+    reveal:
+      OperatorSensitiveDataRevealService;
+  }>;
+
 export type ServerRuntimeDependencies =
   Readonly<{
     fetch?:
@@ -91,6 +117,9 @@ export type OAuthServerRuntime =
     requiredScopes: readonly string[];
     resolver: RepositoryAccessResolver;
     store: SqliteRepositoryConnectionStore;
+
+    operator:
+      OperatorServerRuntime | null;
 
     githubConnect:
       GitHubConnectServerRuntime | null;
@@ -242,7 +271,44 @@ export function loadServerRuntimeFromEnv(
       .trim()
       .toLowerCase();
 
+  const operatorId =
+    (
+      env.REPO_CONTEXT_OPERATOR_ID ??
+      ""
+    ).trim();
+
+  const operatorSubject =
+    (
+      env.REPO_CONTEXT_OPERATOR_SUBJECT ??
+      ""
+    ).trim();
+
+  const operatorTotpSecret =
+    (
+      env.REPO_CONTEXT_OPERATOR_TOTP_SECRET ??
+      ""
+    ).trim();
+
+  const operatorValues = [
+    operatorId,
+    operatorSubject,
+    operatorTotpSecret,
+  ];
+
+  const operatorConfigured =
+    operatorValues.some(
+      Boolean,
+    );
+
   if (mode === "legacy") {
+    if (
+      operatorConfigured
+    ) {
+      throw new Error(
+        "Operator sensitive-data access is supported only in OAuth mode",
+      );
+    }
+
     return {
       mode: "legacy",
     };
@@ -278,6 +344,17 @@ export function loadServerRuntimeFromEnv(
 
   const issuer =
     exactIssuer(env);
+
+  if (
+    operatorConfigured &&
+    !operatorValues.every(
+      Boolean,
+    )
+  ) {
+    throw new Error(
+      "Operator configuration must provide REPO_CONTEXT_OPERATOR_ID, REPO_CONTEXT_OPERATOR_SUBJECT, and REPO_CONTEXT_OPERATOR_TOTP_SECRET together",
+    );
+  }
 
   const authorizationEndpoint =
     validatedUrl(
@@ -374,6 +451,41 @@ export function loadServerRuntimeFromEnv(
       lookupKey,
       encryptionKey,
     });
+
+  let operator:
+    OperatorServerRuntime | null =
+      null;
+
+  if (
+    operatorConfigured
+  ) {
+    const principal:
+      PrincipalIdentity = {
+        issuer,
+        subject:
+          operatorSubject,
+      };
+
+    operator = {
+      operatorId,
+
+      principal,
+
+      sessions:
+        new OperatorPrivilegedSessionService({
+          operatorId,
+          totpSecretBase32:
+            operatorTotpSecret,
+        }),
+
+      reveal:
+        new OperatorSensitiveDataRevealService({
+          store,
+          encryptionKey,
+          operatorId,
+        }),
+    };
+  }
 
   let githubConnect:
     GitHubConnectServerRuntime | null =
@@ -496,6 +608,7 @@ export function loadServerRuntimeFromEnv(
     mcpServerUrl,
     oauthMetadata,
     githubConnect,
+    operator,
 
     verifier:
       createJwtAccessTokenVerifier({
