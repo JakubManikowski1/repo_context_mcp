@@ -66,6 +66,12 @@ const suites:
     },
     {
       label:
+        "Provider revocation",
+      script:
+        "test:provider-revoke",
+    },
+    {
+      label:
         "Auth boundary",
       script:
         "test:auth",
