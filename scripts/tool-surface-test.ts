@@ -8,6 +8,7 @@ const CORE_TOOLS = [
   "issue_lookup",
   "issues_list",
   "repo_code",
+  "repositories_list",
 ];
 
 const FULL_TOOLS = [

@@ -1,10 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
-import {
-  getLegacyRepositoryContext,
-  type RepositoryContext,
+import type {
+  RepositoryContext,
 } from "./repository-context.js";
+
+import {
+  createLegacyRepositoryAccess,
+  type RepositoryToolAccess,
+} from "./repository-access.js";
 import {
   getRepositoryHead,
   getRepoTreeIndex,
@@ -745,6 +749,9 @@ function extractFetchedContent(
 
 const inputSchema = z
   .object({
+    repository_id:
+      z.string().min(1).optional(),
+
     queries: z
       .array(z.string().min(1))
       .min(1)
@@ -946,7 +953,9 @@ function consumeRepoCodeTurnBudget(
 export function registerRepoCodeTools(
   server: McpServer,
   requestId?: string,
-  repository: RepositoryContext = getLegacyRepositoryContext(),
+  access:
+    RepositoryToolAccess =
+      createLegacyRepositoryAccess(),
 ) {
 
   server.registerTool(
@@ -964,6 +973,7 @@ export function registerRepoCodeTools(
     },
 
     async ({
+      repository_id,
       queries,
       paths,
       focusQueries,
@@ -975,7 +985,13 @@ export function registerRepoCodeTools(
       maxChars = DEFAULT_MAX_CHARS,
       includeDocumentation = false,
     }) => {
+      const repository =
+        await access.resolve(
+          repository_id,
+        );
+
       const octokit = repository.octokit;
+
 
       const currentHead =
         await getRepositoryHead(repository);

@@ -8,6 +8,14 @@ import {
   type RepositoryContext,
 } from "./repository-context.js";
 
+import {
+  createLegacyRepositoryAccess,
+} from "./repository-access.js";
+
+import {
+  registerRepositoryTools,
+} from "./repositories.js";
+
 import { registerIssueTools } from "./issues.js";
 import { registerUiTools } from "./ui.js";
 import { registerUiInventoryTools } from "./ui-inventory.js";
@@ -66,6 +74,11 @@ function registerOptionalProfileTools(
 
 const handler = createMcpHandler((ctx) => {
   const repository = getLegacyRepositoryContext();
+
+  const repositoryAccess =
+    createLegacyRepositoryAccess(
+      repository,
+    );
 
   const server = new McpServer(
     {
@@ -144,15 +157,26 @@ GENERAL
 
 
 
-  registerIssueTools(server, repository);
+  registerRepositoryTools(
+    server,
+    repositoryAccess,
+  );
+
+  registerIssueTools(
+    server,
+    repositoryAccess,
+  );
   registerRepoCodeTools(
     server,
     ctx.requestInfo?.headers.get(
       "x-request-id",
     ) ?? undefined,
-    repository,
+    repositoryAccess,
   );
-  registerIssueLookupTools(server, repository);
+  registerIssueLookupTools(
+    server,
+    repositoryAccess,
+  );
   registerOptionalProfileTools(
     server,
     repository,

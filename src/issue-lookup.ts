@@ -3,10 +3,14 @@ import * as z from "zod/v4";
 
 import { issueIndexConfig } from "./config.js";
 import { fetchIssueDetails } from "./issue-details.js";
-import {
-  getLegacyRepositoryContext,
-  type RepositoryContext,
+import type {
+  RepositoryContext,
 } from "./repository-context.js";
+
+import {
+  createLegacyRepositoryAccess,
+  type RepositoryToolAccess,
+} from "./repository-access.js";
 import { getRepositoryHead } from "./repository-snapshot.js";
 
 type IndexItem = {
@@ -237,7 +241,9 @@ function explicitIssueNumber(query: string): number | null {
 
 export function registerIssueLookupTools(
   server: McpServer,
-  repository: RepositoryContext = getLegacyRepositoryContext(),
+  access:
+    RepositoryToolAccess =
+      createLegacyRepositoryAccess(),
 ) {
   server.registerTool(
     "issue_lookup",
@@ -245,6 +251,8 @@ export function registerIssueLookupTools(
       description:
         "Resolve a GitHub issue from an issue number, title, description or optional repository issue index. GitHub Issues remains the source of truth.",
       inputSchema: z.object({
+        repository_id:
+          z.string().min(1).optional(),
         query: z.string().min(1),
         maxCandidates: z
           .number()
@@ -261,9 +269,15 @@ export function registerIssueLookupTools(
       },
     },
     async ({
+      repository_id,
       query,
       maxCandidates = 5,
     }) => {
+      const repository =
+        await access.resolve(
+          repository_id,
+        );
+
       const started = performance.now();
 
       const directNumber = explicitIssueNumber(query);

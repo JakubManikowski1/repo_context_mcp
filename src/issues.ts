@@ -3,13 +3,15 @@ import * as z from "zod/v4";
 
 import { fetchIssueDetails } from "./issue-details.js";
 import {
-  getLegacyRepositoryContext,
-  type RepositoryContext,
-} from "./repository-context.js";
+  createLegacyRepositoryAccess,
+  type RepositoryToolAccess,
+} from "./repository-access.js";
 
 export function registerIssueTools(
   server: McpServer,
-  repository: RepositoryContext = getLegacyRepositoryContext(),
+  access:
+    RepositoryToolAccess =
+      createLegacyRepositoryAccess(),
 ) {
   server.registerTool(
     "issues_list",
@@ -17,6 +19,8 @@ export function registerIssueTools(
       description:
         "List GitHub issues from the configured repository. Pull requests are excluded.",
       inputSchema: z.object({
+        repository_id:
+          z.string().min(1).optional(),
         state: z.enum(["open", "closed", "all"]).optional(),
         labels: z.array(z.string()).optional(),
         limit: z.number().int().min(1).max(50).optional(),
@@ -28,7 +32,17 @@ export function registerIssueTools(
         openWorldHint: true,
       },
     },
-    async ({ state = "open", labels, limit = 20 }) => {
+    async ({
+      repository_id,
+      state = "open",
+      labels,
+      limit = 20,
+    }) => {
+      const repository =
+        await access.resolve(
+          repository_id,
+        );
+
       const octokit = repository.octokit;
 
       const response = await octokit.rest.issues.listForRepo({
@@ -75,6 +89,8 @@ export function registerIssueTools(
       description:
         "Get one GitHub issue including its body, labels, assignees and comments.",
       inputSchema: z.object({
+        repository_id:
+          z.string().min(1).optional(),
         number: z.number().int().positive(),
       }),
       annotations: {
@@ -84,11 +100,20 @@ export function registerIssueTools(
         openWorldHint: true,
       },
     },
-    async ({ number }) => {
-      const result = await fetchIssueDetails(
-        number,
-        repository,
-      );
+    async ({
+      number,
+      repository_id,
+    }) => {
+      const repository =
+        await access.resolve(
+          repository_id,
+        );
+
+      const result =
+        await fetchIssueDetails(
+          number,
+          repository,
+        );
 
       return {
         content: [
