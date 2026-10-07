@@ -84,6 +84,12 @@ const suites:
     },
     {
       label:
+        "Operator HTTP",
+      script:
+        "test:operator-http",
+    },
+    {
+      label:
         "Auth boundary",
       script:
         "test:auth",

@@ -20,6 +20,10 @@ import {
 } from "./connections/github-connect-router.js";
 
 import {
+  createOperatorRouter,
+} from "./operator/router.js";
+
+import {
   createRequestRepositoryAccess,
   loadServerRuntimeFromEnv,
 } from "./server-runtime.js";
@@ -231,6 +235,45 @@ if (
           "repo_context_mcp",
       },
     );
+
+  if (
+    serverRuntime.operator
+  ) {
+    app.use(
+      "/operator",
+
+      createOperatorRouter({
+        authenticate:
+          auth,
+
+        getPrincipal:
+          (request) =>
+            getAuthenticatedPrincipal(
+              request.auth,
+            ),
+
+        operatorId:
+          serverRuntime
+            .operator
+            .operatorId,
+
+        operatorPrincipal:
+          serverRuntime
+            .operator
+            .principal,
+
+        sessions:
+          serverRuntime
+            .operator
+            .sessions,
+
+        reveal:
+          serverRuntime
+            .operator
+            .reveal,
+      }),
+    );
+  }
 
   if (
     serverRuntime.githubConnect

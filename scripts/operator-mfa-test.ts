@@ -99,6 +99,60 @@ async function main() {
     "operator_mfa_invalid",
   );
 
+  let throttleNowMs =
+    59_000;
+
+  const throttledService =
+    new OperatorPrivilegedSessionService({
+      operatorId:
+        "primary-operator",
+
+      totpSecretBase32:
+        RFC_SECRET_BASE32,
+
+      now:
+        () =>
+          new Date(
+            throttleNowMs,
+          ),
+    });
+
+  for (
+    let attempt = 0;
+    attempt < 5;
+    attempt += 1
+  ) {
+    await expectMfaError(
+      () =>
+        throttledService
+          .issueSession(
+            "000000",
+          ),
+      "operator_mfa_invalid",
+    );
+  }
+
+  await expectMfaError(
+    () =>
+      throttledService
+        .issueSession(
+          "000000",
+        ),
+    "operator_mfa_rate_limited",
+  );
+
+  throttleNowMs +=
+    60_001;
+
+  await expectMfaError(
+    () =>
+      throttledService
+        .issueSession(
+          "000000",
+        ),
+    "operator_mfa_invalid",
+  );
+
   const validCode =
     generateTotpCode(
       secret,
@@ -194,15 +248,12 @@ async function main() {
   nowMs =
     120_000;
 
-  const nextCode =
-    generateTotpCode(
-      secret,
-      nowMs,
-    );
-
   const second =
     service.issueSession(
-      nextCode,
+      generateTotpCode(
+        secret,
+        nowMs,
+      ),
     );
 
   assert.equal(
@@ -229,9 +280,27 @@ async function main() {
 
   /*
    * Session stores are process-local.
-   * A second service cannot use a token
-   * issued by the first service.
+   * A second service cannot use a live
+   * token issued by the first service.
    */
+  nowMs =
+    180_000;
+
+  const processLocal =
+    service.issueSession(
+      generateTotpCode(
+        secret,
+        nowMs,
+      ),
+    );
+
+  assert.equal(
+    service.requireSession(
+      processLocal.token,
+    ).operatorId,
+    "primary-operator",
+  );
+
   const restartedService =
     new OperatorPrivilegedSessionService({
       operatorId:
@@ -251,8 +320,41 @@ async function main() {
     () =>
       restartedService
         .requireSession(
-          second.token,
+          processLocal.token,
         ),
+    "operator_session_invalid",
+  );
+
+  /*
+   * A privileged session authorizes
+   * exactly one sensitive operation.
+   */
+  nowMs =
+    240_000;
+
+  const oneShot =
+    service.issueSession(
+      generateTotpCode(
+        secret,
+        nowMs,
+      ),
+    );
+
+  const consumed =
+    service.consumeSession(
+      oneShot.token,
+    );
+
+  assert.equal(
+    consumed.operatorId,
+    "primary-operator",
+  );
+
+  await expectMfaError(
+    () =>
+      service.requireSession(
+        oneShot.token,
+      ),
     "operator_session_invalid",
   );
 

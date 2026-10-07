@@ -20,9 +20,16 @@ export const PRIVILEGED_SESSION_TTL_MS =
 const MAX_OPERATOR_ID_LENGTH =
   200;
 
+const MFA_FAILURE_WINDOW_MS =
+  60 * 1000;
+
+const MFA_MAX_FAILURES =
+  5;
+
 export type OperatorMfaErrorCode =
   | "operator_mfa_invalid"
   | "operator_mfa_replayed"
+  | "operator_mfa_rate_limited"
   | "operator_session_invalid"
   | "operator_session_expired";
 
@@ -138,6 +145,9 @@ export class OperatorPrivilegedSessionService {
     number | null =
       null;
 
+  private failedAttemptTimes:
+    number[] = [];
+
   constructor(
     options: Readonly<{
       operatorId: string;
@@ -184,6 +194,26 @@ export class OperatorPrivilegedSessionService {
     const nowMs =
       this.currentTimeMs();
 
+    this.failedAttemptTimes =
+      this.failedAttemptTimes
+        .filter(
+          (attemptMs) =>
+            nowMs -
+              attemptMs <
+            MFA_FAILURE_WINDOW_MS,
+        );
+
+    if (
+      this.failedAttemptTimes
+        .length >=
+      MFA_MAX_FAILURES
+    ) {
+      throw new OperatorMfaError(
+        "operator_mfa_rate_limited",
+        "Too many invalid operator MFA attempts",
+      );
+    }
+
     const verification =
       verifyTotpCode(
         this.totpSecret,
@@ -192,6 +222,11 @@ export class OperatorPrivilegedSessionService {
       );
 
     if (!verification) {
+      this.failedAttemptTimes
+        .push(
+          nowMs,
+        );
+
       throw new OperatorMfaError(
         "operator_mfa_invalid",
         "Operator MFA code is invalid",
@@ -209,6 +244,9 @@ export class OperatorPrivilegedSessionService {
         "Operator MFA code has already been used",
       );
     }
+
+    this.failedAttemptTimes =
+      [];
 
     this.lastAcceptedCounter =
       verification.counter;
@@ -320,6 +358,35 @@ export class OperatorPrivilegedSessionService {
           session.expiresAtMs,
         ).toISOString(),
     };
+  }
+
+  consumeSession(
+    rawToken: string,
+  ): PrivilegedSession {
+    const session =
+      this.requireSession(
+        rawToken,
+      );
+
+    const token =
+      validSessionToken(
+        rawToken,
+      );
+
+    if (!token) {
+      throw new OperatorMfaError(
+        "operator_session_invalid",
+        "Privileged operator session is invalid",
+      );
+    }
+
+    this.sessions.delete(
+      tokenHash(
+        token,
+      ),
+    );
+
+    return session;
   }
 
   revokeSession(

@@ -17,6 +17,7 @@
     "test:provider-revoke": "tsx scripts/provider-revocation-test.ts",
     "test:operator-reveal": "tsx scripts/operator-reveal-test.ts",
     "test:operator-mfa": "tsx scripts/operator-mfa-test.ts",
+    "test:operator-http": "tsx scripts/operator-router-test.ts",
     "test:auth": "tsx scripts/auth-boundary-test.ts",
     "test:resource-auth": "tsx scripts/oauth-resource-server-test.ts",
     "test:jwt-auth": "tsx scripts/jwt-verifier-test.ts",
@@ -27,7 +28,7 @@
     "test:connect-oauth": "tsx scripts/github-oauth-flow-test.ts",
     "test:connect-selection": "tsx scripts/github-selection-test.ts",
     "test:connect-installation-selection": "tsx scripts/github-installation-selection-test.ts",
-    "test:verbose": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store && npm run test:resolver && npm run test:selection && npm run test:isolation && npm run test:provider-revoke && npm run test:operator-reveal && npm run test:operator-mfa && npm run test:auth && npm run test:resource-auth && npm run test:jwt-auth && npm run test:oauth-server && npm run test:connect && npm run test:connect-oauth && npm run test:connect-selection && npm run test:connect-installation-selection && npm run test:connect-http && npm run test:connect-server-e2e",
+    "test:verbose": "npm run typecheck && npm run test:surface && npm run test:crypto && npm run test:store && npm run test:resolver && npm run test:selection && npm run test:isolation && npm run test:provider-revoke && npm run test:operator-reveal && npm run test:operator-mfa && npm run test:operator-http && npm run test:auth && npm run test:resource-auth && npm run test:jwt-auth && npm run test:oauth-server && npm run test:connect && npm run test:connect-oauth && npm run test:connect-selection && npm run test:connect-installation-selection && npm run test:connect-http && npm run test:connect-server-e2e",
     "verify": "npm test && npm audit",
     "test:connect-http": "tsx scripts/github-connect-router-test.ts",
     "test:connect-server-e2e": "tsx scripts/github-connect-server-e2e-test.ts"
