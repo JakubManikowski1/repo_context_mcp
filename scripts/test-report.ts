@@ -36,6 +36,12 @@ const suites:
     },
     {
       label:
+        "DB structured graph",
+      script:
+        "test:db-graph",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",

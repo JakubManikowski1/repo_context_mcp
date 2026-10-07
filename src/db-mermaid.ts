@@ -7,17 +7,16 @@ import {
   getRepoTreeIndex,
 } from "./repository-snapshot.js";
 
-type Field = {
-  name: string;
-  type: string;
-  required?: boolean;
-  targetCollection?: string;
-};
+import {
+  buildDbGraph,
+  parsePocketBaseMigrations,
+  parsePocketBaseSchema,
+  renderDbGraphMermaid,
+} from "./db-graph.js";
 
-type Collection = {
-  name: string;
-  fields: Map<string, Field>;
-};
+import type {
+  DbCollection,
+} from "./db-graph.js";
 
 async function readFile(path: string, head: string): Promise<string | null> {
   const octokit = getOctokit();
@@ -47,204 +46,6 @@ async function readFile(path: string, head: string): Promise<string | null> {
   ).toString("utf8");
 }
 
-function safeName(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-function mermaidType(type: string): string {
-  const lower = type.toLowerCase();
-
-  if (lower.includes("bool")) return "boolean";
-  if (lower.includes("number")) return "number";
-  if (lower.includes("date")) return "datetime";
-  if (lower.includes("json")) return "json";
-  if (lower.includes("relation")) return "relation";
-  if (lower.includes("file")) return "file";
-  if (lower.includes("email")) return "email";
-  if (lower.includes("url")) return "url";
-
-  return "string";
-}
-
-function parsePocketBaseSchema(raw: string): Collection[] {
-  const parsed = JSON.parse(raw);
-
-  const collectionsRaw = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray(parsed.collections)
-      ? parsed.collections
-      : [];
-
-  return collectionsRaw
-    .filter((collection: any) => collection?.name)
-    .map((collection: any) => {
-      const fields = new Map<string, Field>();
-
-      const sourceFields =
-        collection.fields ??
-        collection.schema ??
-        [];
-
-      for (const field of sourceFields) {
-        if (!field?.name) continue;
-
-        fields.set(field.name, {
-          name: field.name,
-          type: field.type ?? "text",
-          required: !!field.required,
-          targetCollection:
-            field.collectionName ??
-            field.options?.collectionName ??
-            field.options?.collectionId ??
-            undefined,
-        });
-      }
-
-      return {
-        name: collection.name,
-        fields,
-      };
-    });
-}
-
-function parseMigrations(files: Array<{ path: string; content: string }>): Collection[] {
-  const collections = new Map<string, Collection>();
-
-  function ensureCollection(name: string): Collection {
-    let value = collections.get(name);
-
-    if (!value) {
-      value = {
-        name,
-        fields: new Map(),
-      };
-      collections.set(name, value);
-    }
-
-    return value;
-  }
-
-  for (const file of files) {
-    const text = file.content;
-
-    const collectionPatterns = [
-      /name\s*:\s*["'`]([^"'`]+)["'`]/g,
-      /new\s+Collection\s*\(\s*\{[\s\S]*?name\s*:\s*["'`]([^"'`]+)["'`]/g,
-    ];
-
-    const candidateNames = new Set<string>();
-
-    for (const pattern of collectionPatterns) {
-      let match;
-
-      while ((match = pattern.exec(text)) !== null) {
-        const name = match[1];
-
-        if (
-          name &&
-          !name.startsWith("_") &&
-          name.length < 100
-        ) {
-          candidateNames.add(name);
-        }
-      }
-    }
-
-    for (const name of candidateNames) {
-      ensureCollection(name);
-    }
-
-    const fieldRegex =
-      /new\s+([A-Za-z]+Field)\s*\(\s*\{([\s\S]*?)\}\s*\)/g;
-
-    let fieldMatch;
-
-    while ((fieldMatch = fieldRegex.exec(text)) !== null) {
-      const fieldClass = fieldMatch[1];
-      const body = fieldMatch[2];
-
-      const nameMatch =
-        body.match(/name\s*:\s*["'`]([^"'`]+)["'`]/);
-
-      if (!nameMatch) continue;
-
-      const fieldName = nameMatch[1];
-
-      const collectionContext = text
-        .slice(Math.max(0, fieldMatch.index - 5000), fieldMatch.index)
-        .match(/name\s*:\s*["'`]([^"'`]+)["'`]/g);
-
-      const lastCollectionRaw =
-        collectionContext?.at(-1);
-
-      const collectionName =
-        lastCollectionRaw?.match(/["'`]([^"'`]+)["'`]/)?.[1];
-
-      if (!collectionName) continue;
-
-      const required =
-        /required\s*:\s*true/.test(body);
-
-      const target =
-        body.match(
-          /collection(?:Id|Name)?\s*:\s*["'`]([^"'`]+)["'`]/,
-        )?.[1];
-
-      ensureCollection(collectionName).fields.set(fieldName, {
-        name: fieldName,
-        type: fieldClass.replace(/Field$/, ""),
-        required,
-        targetCollection: target,
-      });
-    }
-  }
-
-  return [...collections.values()];
-}
-
-function buildMermaid(collections: Collection[]): string {
-  const lines: string[] = ["erDiagram"];
-
-  for (const collection of collections) {
-    const entity = safeName(collection.name);
-
-    lines.push(`  ${entity} {`);
-
-    if (collection.fields.size === 0) {
-      lines.push("    string id");
-    } else {
-      lines.push("    string id");
-
-      for (const field of collection.fields.values()) {
-        lines.push(
-          `    ${mermaidType(field.type)} ${safeName(field.name)}`,
-        );
-      }
-    }
-
-    lines.push("  }");
-  }
-
-  const relations = new Set<string>();
-
-  for (const collection of collections) {
-    for (const field of collection.fields.values()) {
-      if (!field.targetCollection) continue;
-
-      const from = safeName(collection.name);
-      const to = safeName(field.targetCollection);
-
-      relations.add(
-        `  ${to} ||--o{ ${from} : "${field.name}"`,
-      );
-    }
-  }
-
-  lines.push(...relations);
-
-  return lines.join("\n");
-}
-
 export function registerDbMermaidTools(server: McpServer) {
   server.registerTool(
     "db_mermaid",
@@ -271,7 +72,7 @@ export function registerDbMermaidTools(server: McpServer) {
           path.endsWith("/pb_schema.json"),
       );
 
-      let parsedCollections: Collection[] = [];
+      let parsedCollections: DbCollection[] = [];
       let source: "schema" | "migrations" = "migrations";
       let sourceFiles: string[] = [];
 
@@ -280,7 +81,11 @@ export function registerDbMermaidTools(server: McpServer) {
 
         if (raw) {
           try {
-            parsedCollections = parsePocketBaseSchema(raw);
+            parsedCollections =
+              parsePocketBaseSchema(
+                raw,
+                schemaPath,
+              );
             source = "schema";
             sourceFiles = [schemaPath];
           } catch {
@@ -315,7 +120,10 @@ export function registerDbMermaidTools(server: McpServer) {
             } => typeof item.content === "string",
           );
 
-        parsedCollections = parseMigrations(readable);
+        parsedCollections =
+          parsePocketBaseMigrations(
+            readable,
+          );
         sourceFiles = readable.map((x) => x.path);
       }
 
@@ -329,7 +137,15 @@ export function registerDbMermaidTools(server: McpServer) {
         );
       }
 
-      const diagram = buildMermaid(parsedCollections);
+      const graph =
+        buildDbGraph(
+          parsedCollections,
+        );
+
+      const diagram =
+        renderDbGraphMermaid(
+          graph,
+        );
 
       return {
         content: [
@@ -344,9 +160,27 @@ export function registerDbMermaidTools(server: McpServer) {
                 sourceFiles,
                 collectionCount: parsedCollections.length,
                 collections: parsedCollections.map((collection) => ({
-                  name: collection.name,
-                  fields: [...collection.fields.values()],
+                  name:
+                    collection.name,
+                  fields:
+                    [
+                      ...collection
+                        .fields
+                        .values(),
+                    ].map(
+                      (field) => ({
+                        name:
+                          field.name,
+                        type:
+                          field.type,
+                        required:
+                          !!field.required,
+                        targetCollection:
+                          field.targetCollection,
+                      }),
+                    ),
                 })),
+                graph,
                 mermaid: diagram,
               },
               null,
