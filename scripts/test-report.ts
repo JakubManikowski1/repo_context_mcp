@@ -42,6 +42,12 @@ const suites:
     },
     {
       label:
+        "UI structured graph",
+      script:
+        "test:ui-graph",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",

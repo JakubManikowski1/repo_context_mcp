@@ -7,15 +7,18 @@ import {
   getRepoTreeIndex,
 } from "./repository-snapshot.js";
 
+import {
+  buildUiGraph,
+  extractUiFlowEvents,
+  renderUiGraphMermaid,
+} from "./ui-graph.js";
+
+import type {
+  UiFlowFile,
+} from "./ui-graph.js";
+
 const EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"];
 const MAX_FILE_BYTES = 250_000;
-
-type FlowEvent = {
-  type: string;
-  line: number;
-  target?: string;
-  text?: string;
-};
 
 function normalizeRoute(route: string): string {
   if (route.trim() === "/") return "/";
@@ -72,131 +75,6 @@ async function readFile(path: string, head: string): Promise<string | null> {
     response.data.content.replace(/\n/g, ""),
     "base64",
   ).toString("utf8");
-}
-
-function clean(value?: string): string | undefined {
-  if (!value) return undefined;
-
-  const result = value
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 300);
-
-  return result || undefined;
-}
-
-function extractFlowEvents(content: string): FlowEvent[] {
-  const lines = content.split(/\r?\n/);
-  const events: FlowEvent[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNo = i + 1;
-
-    const href =
-      line.match(/\bhref\s*=\s*["'`]([^"'`]+)["'`]/)?.[1];
-
-    if (href) {
-      events.push({
-        type: "navigation",
-        line: lineNo,
-        target: href,
-      });
-    }
-
-    const routerPush =
-      line.match(
-        /\b(?:router\.(?:push|replace)|navigate)\s*\(\s*["'`]([^"'`]+)["'`]/,
-      )?.[1];
-
-    if (routerPush) {
-      events.push({
-        type: "navigation",
-        line: lineNo,
-        target: routerPush,
-      });
-    }
-
-    const apiCall =
-      line.match(
-        /\b(?:fetch|axios\.(?:get|post|put|patch|delete))\s*\(\s*["'`]([^"'`]+)["'`]/,
-      )?.[1];
-
-    if (apiCall) {
-      events.push({
-        type: "api_call",
-        line: lineNo,
-        target: apiCall,
-      });
-    }
-
-    if (/\bonSubmit\s*=|handleSubmit\s*\(/.test(line)) {
-      events.push({
-        type: "form_submit",
-        line: lineNo,
-      });
-    }
-
-    if (/\bonClick\s*=/.test(line)) {
-      events.push({
-        type: "click_action",
-        line: lineNo,
-        text: clean(
-          line.match(/>([^<>]{1,120})</)?.[1],
-        ),
-      });
-    }
-
-    if (
-      /\b(Dialog|Modal|Drawer|Sheet|Popover)\b/.test(line)
-    ) {
-      events.push({
-        type: "overlay",
-        line: lineNo,
-      });
-    }
-
-    if (
-      /\b(disabled|isDisabled|canSubmit|canProceed|hasPermission|isAllowed)\b/.test(
-        line,
-      )
-    ) {
-      events.push({
-        type: "guard",
-        line: lineNo,
-        text: clean(line),
-      });
-    }
-
-    if (
-      /\b(isLoading|loading|Loading|Spinner|Skeleton)\b/.test(line)
-    ) {
-      events.push({
-        type: "loading_state",
-        line: lineNo,
-      });
-    }
-
-    if (
-      /\b(isError|errorMessage|toast\.error|setError|Error)\b/.test(line)
-    ) {
-      events.push({
-        type: "error_state",
-        line: lineNo,
-      });
-    }
-
-    if (
-      /\b(empty|Empty|noData|NoData|length\s*===\s*0)\b/.test(line)
-    ) {
-      events.push({
-        type: "empty_state",
-        line: lineNo,
-      });
-    }
-  }
-
-  return events;
 }
 
 export function registerUiFlowTools(server: McpServer) {
@@ -301,22 +179,74 @@ export function registerUiFlowTools(server: McpServer) {
 
           return {
             path,
-            events: extractFlowEvents(content),
+            events: extractUiFlowEvents(
+              content,
+            ),
           };
         }),
       );
 
-      const summary: Record<string, number> = {};
+      const graphFiles:
+        UiFlowFile[] =
+        files.flatMap(
+          (file) => {
+            if (
+              !("events" in file)
+              || !Array.isArray(
+                file.events,
+              )
+            ) {
+              return [];
+            }
 
-      for (const file of files) {
-        if (!("events" in file) || !Array.isArray(file.events)) {
-          continue;
-        }
+            return [
+              {
+                path:
+                  file.path,
+                events:
+                  file.events,
+              },
+            ];
+          },
+        );
 
-        for (const event of file.events) {
-          summary[event.type] = (summary[event.type] ?? 0) + 1;
+      const summary:
+        Record<
+          string,
+          number
+        > = {};
+
+      for (
+        const file
+        of graphFiles
+      ) {
+        for (
+          const event
+          of file.events
+        ) {
+          summary[
+            event.type
+          ] =
+            (
+              summary[
+                event.type
+              ]
+              ?? 0
+            )
+            + 1;
         }
       }
+
+      const graph =
+        buildUiGraph(
+          normalizedRoute,
+          graphFiles,
+        );
+
+      const mermaid =
+        renderUiGraphMermaid(
+          graph,
+        );
 
       return {
         content: [
@@ -330,6 +260,8 @@ export function registerUiFlowTools(server: McpServer) {
                 route: normalizedRoute,
                 summary,
                 files,
+                graph,
+                mermaid,
               },
               null,
               2,
