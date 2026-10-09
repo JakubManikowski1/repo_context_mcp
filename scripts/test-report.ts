@@ -48,6 +48,12 @@ const suites:
     },
     {
       label:
+        "Backend API graph",
+      script:
+        "test:backend-graph",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",
