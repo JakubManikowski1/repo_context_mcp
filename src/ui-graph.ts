@@ -23,10 +23,17 @@ export type UiComponentUsage = {
   importLine?: number;
 };
 
+export type UiInventoryItem = {
+  type: string;
+  text?: string;
+  line: number;
+};
+
 export type UiFlowFile = {
   path: string;
   events: UiFlowEvent[];
   components?: UiComponentUsage[];
+  inventory?: UiInventoryItem[];
 };
 
 export type UiGraphEvidence = {
@@ -40,6 +47,7 @@ export type UiGraphNodeKind =
   | "navigation_target"
   | "api_endpoint"
   | "component"
+  | "ui_element"
   | "interaction"
   | "state";
 
@@ -314,6 +322,180 @@ export function extractUiComponentUsages(
   }
 
   return usages;
+}
+
+export function extractUiInventoryItems(
+  content: string,
+): UiInventoryItem[] {
+  const lines =
+    content.split(
+      /\r?\n/,
+    );
+
+  const items:
+    UiInventoryItem[] = [];
+
+  const patterns:
+    Array<{
+      type: string;
+      regex: RegExp;
+    }> = [
+      {
+        type:
+          "button",
+        regex:
+          /<(?:button|Button)\b[^>]*>(.*?)<\/(?:button|Button)>/i,
+      },
+      {
+        type:
+          "heading",
+        regex:
+          /<h[1-6]\b[^>]*>(.*?)<\/h[1-6]>/i,
+      },
+      {
+        type:
+          "label",
+        regex:
+          /<label\b[^>]*>(.*?)<\/label>/i,
+      },
+      {
+        type:
+          "link",
+        regex:
+          /<(?:a|Link)\b[^>]*>(.*?)<\/(?:a|Link)>/i,
+      },
+      {
+        type:
+          "placeholder",
+        regex:
+          /placeholder\s*=\s*["'`]([^"'`]+)["'`]/i,
+      },
+      {
+        type:
+          "aria-label",
+        regex:
+          /aria-label\s*=\s*["'`]([^"'`]+)["'`]/i,
+      },
+    ];
+
+  for (
+    let i = 0;
+    i < lines.length;
+    i++
+  ) {
+    const line =
+      lines[i];
+
+    for (
+      const pattern
+      of patterns
+    ) {
+      const match =
+        line.match(
+          pattern.regex,
+        );
+
+      if (!match) {
+        continue;
+      }
+
+      const value =
+        (
+          match[1]
+          ?? ""
+        )
+          .replace(
+            /\s+/g,
+            " ",
+          )
+          .replace(
+            /[{}]/g,
+            "",
+          )
+          .trim()
+          .slice(
+            0,
+            300,
+          );
+
+      items.push({
+        type:
+          pattern.type,
+        text:
+          value
+          || undefined,
+        line:
+          i + 1,
+      });
+    }
+
+    if (
+      /\b(isLoading|loading|Loading|Skeleton|Spinner)\b/.test(
+        line,
+      )
+    ) {
+      items.push({
+        type:
+          "loading_state",
+        line:
+          i + 1,
+      });
+    }
+
+    if (
+      /\b(error|Error|isError|errorMessage|toast\.error)\b/.test(
+        line,
+      )
+    ) {
+      items.push({
+        type:
+          "error_state",
+        line:
+          i + 1,
+      });
+    }
+
+    if (
+      /\b(empty|Empty|noData|NoData|length\s*===\s*0)\b/.test(
+        line,
+      )
+    ) {
+      items.push({
+        type:
+          "empty_state",
+        line:
+          i + 1,
+      });
+    }
+
+    if (
+      /<(?:input|Input|select|Select|textarea|Textarea)\b/i.test(
+        line,
+      )
+    ) {
+      items.push({
+        type:
+          "form_control",
+        line:
+          i + 1,
+      });
+    }
+
+    if (
+      /\bonClick\s*=/.test(
+        line,
+      )
+    ) {
+      items.push({
+        type:
+          "click_action",
+        line:
+          i + 1,
+      });
+    }
+  }
+
+  return items;
 }
 
 type UiImportBinding = {
@@ -734,6 +916,28 @@ function fileNodeId(
   );
 }
 
+function inventoryNodeId(
+  path: string,
+  item: UiInventoryItem,
+): string {
+  return [
+    "ui",
+    encoded(
+      path,
+    ),
+    item.line,
+    encoded(
+      item.type,
+    ),
+    encoded(
+      item.text
+      ?? "",
+    ),
+  ].join(
+    ":",
+  );
+}
+
 function componentNodeId(
   path: string,
   name: string,
@@ -1061,6 +1265,71 @@ export function buildUiGraph(
             importEvidence,
         });
       }
+    }
+
+    for (
+      const item
+      of file.inventory
+        ?? []
+    ) {
+      if (
+        item.type
+          === "loading_state"
+        || item.type
+          === "error_state"
+        || item.type
+          === "empty_state"
+        || item.type
+          === "click_action"
+      ) {
+        continue;
+      }
+
+      const itemId =
+        inventoryNodeId(
+          file.path,
+          item,
+        );
+
+      const itemEvidence:
+        UiGraphEvidence[] = [
+          {
+            path:
+              file.path,
+            line:
+              item.line,
+          },
+        ];
+
+      addNode({
+        id:
+          itemId,
+        kind:
+          "ui_element",
+        label:
+          item.text
+            ? `${item.type}: ${item.text}`
+            : item.type,
+        evidence:
+          itemEvidence,
+      });
+
+      addEdge({
+        id:
+          edgeId(
+            "contains",
+            fileId,
+            itemId,
+          ),
+        kind:
+          "contains",
+        source:
+          fileId,
+        target:
+          itemId,
+        evidence:
+          itemEvidence,
+      });
     }
 
     for (

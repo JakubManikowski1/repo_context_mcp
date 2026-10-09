@@ -4,6 +4,7 @@ import {
   buildUiGraph,
   extractUiComponentUsages,
   extractUiFlowEvents,
+  extractUiInventoryItems,
   renderUiGraphMermaid,
   resolveUiComponentUsages,
 } from "../src/ui-graph.js";
@@ -32,6 +33,70 @@ function main() {
     extractUiFlowEvents(
       content,
     );
+
+  const inventory =
+    extractUiInventoryItems(
+      [
+        "<h1>Invoices</h1>",
+        "<Button>Push all</Button>",
+        "<label>Customer</label>",
+        '<input placeholder="Search invoices" aria-label="Invoice search" />',
+        '<Link href="/clients">Clients</Link>',
+        "if (isLoading) return <Spinner />;",
+        'toast.error("Failed");',
+        "if (items.length === 0) return <Empty />;",
+      ].join(
+        "\n",
+      ),
+    );
+
+  assert.ok(
+    inventory.some(
+      (item) =>
+        item.type
+          === "heading"
+        && item.text
+          === "Invoices",
+    ),
+  );
+
+  assert.ok(
+    inventory.some(
+      (item) =>
+        item.type
+          === "button"
+        && item.text
+          === "Push all",
+    ),
+  );
+
+  assert.ok(
+    inventory.some(
+      (item) =>
+        item.type
+          === "form_control",
+    ),
+  );
+
+  assert.ok(
+    inventory.some(
+      (item) =>
+        item.type
+          === "placeholder"
+        && item.text
+          === "Search invoices",
+    ),
+  );
+
+  assert.ok(
+    inventory.some(
+      (item) =>
+        item.type
+          === "aria-label"
+        && item.text
+          === "Invoice search",
+    ),
+  );
 
   const components =
     extractUiComponentUsages(
@@ -240,6 +305,42 @@ function main() {
               11,
           },
         ],
+        inventory: [
+          {
+            type:
+              "heading",
+            text:
+              "Invoices",
+            line:
+              2,
+          },
+          {
+            type:
+              "button",
+            text:
+              "Push all",
+            line:
+              12,
+          },
+          {
+            type:
+              "form_control",
+            line:
+              15,
+          },
+          {
+            type:
+              "loading_state",
+            line:
+              40,
+          },
+          {
+            type:
+              "click_action",
+            line:
+              12,
+          },
+        ],
         events: [
           {
             type:
@@ -443,6 +544,59 @@ function main() {
     ],
   );
 
+  assert.equal(
+    graph.nodes.filter(
+      (node) =>
+        node.kind
+          === "ui_element",
+    ).length,
+    3,
+  );
+
+  assert.ok(
+    graph.nodes.some(
+      (node) =>
+        node.kind
+          === "ui_element"
+        && node.label
+          === "heading: Invoices",
+    ),
+  );
+
+  assert.ok(
+    graph.nodes.some(
+      (node) =>
+        node.kind
+          === "ui_element"
+        && node.label
+          === "button: Push all",
+    ),
+  );
+
+  assert.ok(
+    graph.nodes.some(
+      (node) =>
+        node.kind
+          === "ui_element"
+        && node.label
+          === "form_control",
+    ),
+  );
+
+  assert.ok(
+    !graph.nodes.some(
+      (node) =>
+        node.kind
+          === "ui_element"
+        && (
+          node.label
+            === "loading_state"
+          || node.label
+            === "click_action"
+        ),
+    ),
+  );
+
   assert.ok(
     graph.nodes.some(
       (node) =>
@@ -507,11 +661,40 @@ function main() {
     ),
   );
 
+  const uiElementIds =
+    new Set(
+      graph.nodes
+        .filter(
+          (node) =>
+            node.kind
+              === "ui_element",
+        )
+        .map(
+          (node) =>
+            node.id,
+        ),
+    );
+
   assert.equal(
     graph.edges.filter(
       (edge) =>
         edge.kind
-          === "contains",
+          === "contains"
+        && uiElementIds.has(
+          edge.target,
+        ),
+    ).length,
+    3,
+  );
+
+  assert.equal(
+    graph.edges.filter(
+      (edge) =>
+        edge.kind
+          === "contains"
+        && !uiElementIds.has(
+          edge.target,
+        ),
     ).length,
     4,
   );
@@ -577,6 +760,18 @@ function main() {
   assert.ok(
     mermaid.includes(
       "component: InvoiceTable",
+    ),
+  );
+
+  assert.ok(
+    mermaid.includes(
+      "ui_element: heading: Invoices",
+    ),
+  );
+
+  assert.ok(
+    mermaid.includes(
+      "ui_element: button: Push all",
     ),
   );
 

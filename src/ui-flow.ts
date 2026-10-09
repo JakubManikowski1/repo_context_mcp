@@ -10,6 +10,7 @@ import {
 import {
   buildUiGraph,
   extractUiFlowEvents,
+  extractUiInventoryItems,
   resolveUiComponentUsages,
   renderUiGraphMermaid,
 } from "./ui-graph.js";
@@ -189,6 +190,10 @@ export function registerUiFlowTools(server: McpServer) {
                 content,
                 treeIndex.paths,
               ),
+            inventory:
+              extractUiInventoryItems(
+                content,
+              ),
           };
         }),
       );
@@ -218,6 +223,13 @@ export function registerUiFlowTools(server: McpServer) {
                     file.components,
                   )
                     ? file.components
+                    : [],
+                inventory:
+                  "inventory" in file
+                  && Array.isArray(
+                    file.inventory,
+                  )
+                    ? file.inventory
                     : [],
               },
             ];
