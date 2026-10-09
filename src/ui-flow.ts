@@ -9,6 +9,7 @@ import {
 
 import {
   buildUiGraph,
+  extractUiComponentUsages,
   extractUiFlowEvents,
   renderUiGraphMermaid,
 } from "./ui-graph.js";
@@ -182,6 +183,10 @@ export function registerUiFlowTools(server: McpServer) {
             events: extractUiFlowEvents(
               content,
             ),
+            components:
+              extractUiComponentUsages(
+                content,
+              ),
           };
         }),
       );
@@ -205,6 +210,13 @@ export function registerUiFlowTools(server: McpServer) {
                   file.path,
                 events:
                   file.events,
+                components:
+                  "components" in file
+                  && Array.isArray(
+                    file.components,
+                  )
+                    ? file.components
+                    : [],
               },
             ];
           },

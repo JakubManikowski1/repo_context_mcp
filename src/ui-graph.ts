@@ -16,9 +16,15 @@ export type UiFlowEvent = {
   text?: string;
 };
 
+export type UiComponentUsage = {
+  name: string;
+  line: number;
+};
+
 export type UiFlowFile = {
   path: string;
   events: UiFlowEvent[];
+  components?: UiComponentUsage[];
 };
 
 export type UiGraphEvidence = {
@@ -31,6 +37,7 @@ export type UiGraphNodeKind =
   | "source_file"
   | "navigation_target"
   | "api_endpoint"
+  | "component"
   | "interaction"
   | "state";
 
@@ -45,6 +52,7 @@ export type UiGraphEdgeKind =
   | "contains"
   | "navigates_to"
   | "calls"
+  | "renders"
   | "shows_state";
 
 export type UiGraphEdge = {
@@ -265,6 +273,46 @@ export function extractUiFlowEvents(
   return events;
 }
 
+export function extractUiComponentUsages(
+  content: string,
+): UiComponentUsage[] {
+  const lines =
+    content.split(
+      /\r?\n/,
+    );
+
+  const usages:
+    UiComponentUsage[] = [];
+
+  for (
+    let i = 0;
+    i < lines.length;
+    i++
+  ) {
+    const line =
+      lines[i];
+
+    const matches =
+      line.matchAll(
+        /<([A-Z][A-Za-z0-9_$]*(?:\.[A-Z][A-Za-z0-9_$]*)*)\b/g,
+      );
+
+    for (
+      const match
+      of matches
+    ) {
+      usages.push({
+        name:
+          match[1],
+        line:
+          i + 1,
+      });
+    }
+  }
+
+  return usages;
+}
+
 function evidenceKey(
   evidence:
     UiGraphEvidence,
@@ -356,6 +404,23 @@ function fileNodeId(
     + encoded(
       path,
     )
+  );
+}
+
+function componentNodeId(
+  path: string,
+  name: string,
+): string {
+  return [
+    "component",
+    encoded(
+      path,
+    ),
+    encoded(
+      name,
+    ),
+  ].join(
+    ":",
   );
 }
 
@@ -560,6 +625,56 @@ export function buildUiGraph(
       evidence:
         fileEvidence,
     });
+
+    for (
+      const component
+      of file.components
+        ?? []
+    ) {
+      const componentId =
+        componentNodeId(
+          file.path,
+          component.name,
+        );
+
+      const componentEvidence:
+        UiGraphEvidence[] = [
+          {
+            path:
+              file.path,
+            line:
+              component.line,
+          },
+        ];
+
+      addNode({
+        id:
+          componentId,
+        kind:
+          "component",
+        label:
+          component.name,
+        evidence:
+          componentEvidence,
+      });
+
+      addEdge({
+        id:
+          edgeId(
+            "renders",
+            fileId,
+            componentId,
+          ),
+        kind:
+          "renders",
+        source:
+          fileId,
+        target:
+          componentId,
+        evidence:
+          componentEvidence,
+      });
+    }
 
     for (
       const event
@@ -801,6 +916,9 @@ function mermaidEdgeLabel(
 
     case "calls":
       return "calls";
+
+    case "renders":
+      return "renders";
 
     case "shows_state":
       return "shows state";

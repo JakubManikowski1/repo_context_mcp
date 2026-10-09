@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   buildUiGraph,
+  extractUiComponentUsages,
   extractUiFlowEvents,
   renderUiGraphMermaid,
 } from "../src/ui-graph.js";
@@ -30,6 +31,24 @@ function main() {
     extractUiFlowEvents(
       content,
     );
+
+  const components =
+    extractUiComponentUsages(
+      content,
+    );
+
+  assert.deepEqual(
+    components.map(
+      (component) =>
+        component.name,
+    ),
+    [
+      "Drawer",
+      "Button",
+      "Spinner",
+      "Empty",
+    ],
+  );
 
   assert.ok(
     events.some(
@@ -124,6 +143,26 @@ function main() {
       {
         path:
           "src/pages/InvoicesPage.tsx",
+        components: [
+          {
+            name:
+              "InvoiceTable",
+            line:
+              4,
+          },
+          {
+            name:
+              "InvoiceTable",
+            line:
+              8,
+          },
+          {
+            name:
+              "PushAllButton",
+            line:
+              11,
+          },
+        ],
         events: [
           {
             type:
@@ -154,6 +193,20 @@ function main() {
       {
         path:
           "src/components/InvoiceDrawer.tsx",
+        components: [
+          {
+            name:
+              "InvoiceTable",
+            line:
+              3,
+          },
+          {
+            name:
+              "DrawerBody",
+            line:
+              7,
+          },
+        ],
         events: [
           {
             type:
@@ -199,6 +252,72 @@ function main() {
           === "source_file",
     ).length,
     2,
+  );
+
+  assert.equal(
+    graph.nodes.filter(
+      (node) =>
+        node.kind
+          === "component",
+    ).length,
+    4,
+  );
+
+  assert.equal(
+    graph.nodes.filter(
+      (node) =>
+        node.kind
+          === "component"
+        && node.label
+          === "InvoiceTable",
+    ).length,
+    2,
+  );
+
+  assert.equal(
+    graph.edges.filter(
+      (edge) =>
+        edge.kind
+          === "renders",
+    ).length,
+    4,
+  );
+
+  const pageInvoiceTable =
+    graph.nodes.find(
+      (node) =>
+        node.kind
+          === "component"
+        && node.label
+          === "InvoiceTable"
+        && node.id.includes(
+          encodeURIComponent(
+            "src/pages/InvoicesPage.tsx",
+          ),
+        ),
+    );
+
+  assert.ok(
+    pageInvoiceTable,
+  );
+
+  assert.deepEqual(
+    pageInvoiceTable
+      .evidence,
+    [
+      {
+        path:
+          "src/pages/InvoicesPage.tsx",
+        line:
+          4,
+      },
+      {
+        path:
+          "src/pages/InvoicesPage.tsx",
+        line:
+          8,
+      },
+    ],
   );
 
   assert.ok(
@@ -334,6 +453,18 @@ function main() {
 
   assert.ok(
     mermaid.includes(
+      "component: InvoiceTable",
+    ),
+  );
+
+  assert.ok(
+    mermaid.includes(
+      "|renders|",
+    ),
+  );
+
+  assert.ok(
+    mermaid.includes(
       "|navigates to|",
     ),
   );
@@ -403,6 +534,23 @@ function main() {
       )
       .length,
     2,
+  );
+
+  const htmlOnly =
+    extractUiComponentUsages(
+      [
+        "<div>",
+        "<button>Save</button>",
+        "<input />",
+        "</div>",
+      ].join(
+        "\n",
+      ),
+    );
+
+  assert.deepEqual(
+    htmlOnly,
+    [],
   );
 
   console.log(
