@@ -9,8 +9,8 @@ import {
 
 import {
   buildUiGraph,
-  extractUiComponentUsages,
   extractUiFlowEvents,
+  resolveUiComponentUsages,
   renderUiGraphMermaid,
 } from "./ui-graph.js";
 
@@ -184,8 +184,10 @@ export function registerUiFlowTools(server: McpServer) {
               content,
             ),
             components:
-              extractUiComponentUsages(
+              resolveUiComponentUsages(
+                path,
                 content,
+                treeIndex.paths,
               ),
           };
         }),

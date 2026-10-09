@@ -5,6 +5,7 @@ import {
   extractUiComponentUsages,
   extractUiFlowEvents,
   renderUiGraphMermaid,
+  resolveUiComponentUsages,
 } from "../src/ui-graph.js";
 
 import type {
@@ -138,6 +139,74 @@ function main() {
     ),
   );
 
+  const resolvedComponents =
+    resolveUiComponentUsages(
+      "src/pages/InvoicesPage.tsx",
+      [
+        'import InvoiceTable from "../components/InvoiceTable";',
+        'import { PushAllButton as PushButton } from "../components/actions";',
+        'import * as UI from "../components/ui";',
+        'import { ExternalButton } from "@app/ui";',
+        "<InvoiceTable />",
+        "<PushButton />",
+        "<UI.Drawer />",
+        "<ExternalButton />",
+      ].join(
+        "\n",
+      ),
+      [
+        "src/pages/InvoicesPage.tsx",
+        "src/components/InvoiceTable.tsx",
+        "src/components/actions/index.tsx",
+        "src/components/ui/index.ts",
+      ],
+    );
+
+  const resolvedByName =
+    new Map(
+      resolvedComponents.map(
+        (component) => [
+          component.name,
+          component,
+        ],
+      ),
+    );
+
+  assert.equal(
+    resolvedByName.get(
+      "InvoiceTable",
+    )?.importedFrom,
+    "src/components/InvoiceTable.tsx",
+  );
+
+  assert.equal(
+    resolvedByName.get(
+      "PushButton",
+    )?.importedFrom,
+    "src/components/actions/index.tsx",
+  );
+
+  assert.equal(
+    resolvedByName.get(
+      "UI.Drawer",
+    )?.importedFrom,
+    "src/components/ui/index.ts",
+  );
+
+  assert.equal(
+    resolvedByName.get(
+      "ExternalButton",
+    )?.importedFrom,
+    undefined,
+  );
+
+  assert.equal(
+    resolvedByName.get(
+      "InvoiceTable",
+    )?.importLine,
+    1,
+  );
+
   const files:
     UiFlowFile[] = [
       {
@@ -149,12 +218,20 @@ function main() {
               "InvoiceTable",
             line:
               4,
+            importedFrom:
+              "src/components/InvoiceTable.tsx",
+            importLine:
+              1,
           },
           {
             name:
               "InvoiceTable",
             line:
               8,
+            importedFrom:
+              "src/components/InvoiceTable.tsx",
+            importLine:
+              1,
           },
           {
             name:
@@ -251,7 +328,7 @@ function main() {
         node.kind
           === "source_file",
     ).length,
-    2,
+    3,
   );
 
   assert.equal(
@@ -281,6 +358,52 @@ function main() {
           === "renders",
     ).length,
     4,
+  );
+
+  assert.equal(
+    graph.edges.filter(
+      (edge) =>
+        edge.kind
+          === "imports_from",
+    ).length,
+    1,
+  );
+
+  const importEdge =
+    graph.edges.find(
+      (edge) =>
+        edge.kind
+          === "imports_from",
+    );
+
+  assert.ok(
+    importEdge,
+  );
+
+  assert.ok(
+    graph.nodes.some(
+      (node) =>
+        node.kind
+          === "source_file"
+        && node.label
+          === "src/components/InvoiceTable.tsx",
+    ),
+  );
+
+  assert.deepEqual(
+    importEdge.evidence,
+    [
+      {
+        path:
+          "src/pages/InvoicesPage.tsx",
+        line:
+          1,
+      },
+      {
+        path:
+          "src/components/InvoiceTable.tsx",
+      },
+    ],
   );
 
   const pageInvoiceTable =
@@ -460,6 +583,12 @@ function main() {
   assert.ok(
     mermaid.includes(
       "|renders|",
+    ),
+  );
+
+  assert.ok(
+    mermaid.includes(
+      "|imports from|",
     ),
   );
 

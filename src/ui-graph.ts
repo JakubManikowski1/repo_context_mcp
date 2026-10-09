@@ -19,6 +19,8 @@ export type UiFlowEvent = {
 export type UiComponentUsage = {
   name: string;
   line: number;
+  importedFrom?: string;
+  importLine?: number;
 };
 
 export type UiFlowFile = {
@@ -53,6 +55,7 @@ export type UiGraphEdgeKind =
   | "navigates_to"
   | "calls"
   | "renders"
+  | "imports_from"
   | "shows_state";
 
 export type UiGraphEdge = {
@@ -311,6 +314,330 @@ export function extractUiComponentUsages(
   }
 
   return usages;
+}
+
+type UiImportBinding = {
+  localName: string;
+  specifier: string;
+  line: number;
+  namespace: boolean;
+};
+
+function extractUiImportBindings(
+  content: string,
+): UiImportBinding[] {
+  const lines =
+    content.split(
+      /\r?\n/,
+    );
+
+  const bindings:
+    UiImportBinding[] = [];
+
+  for (
+    let i = 0;
+    i < lines.length;
+    i++
+  ) {
+    const line =
+      lines[i];
+
+    const source =
+      line.match(
+        /\bfrom\s*["'`]([^"'`]+)["'`]/,
+      )
+      ?.[1];
+
+    if (
+      !source
+      || !source.startsWith(
+        ".",
+      )
+    ) {
+      continue;
+    }
+
+    const namespace =
+      line.match(
+        /^\s*import\s+\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+from\b/,
+      );
+
+    if (namespace) {
+      bindings.push({
+        localName:
+          namespace[1],
+        specifier:
+          source,
+        line:
+          i + 1,
+        namespace:
+          true,
+      });
+
+      continue;
+    }
+
+    const defaultImport =
+      line.match(
+        /^\s*import\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:,|from\b)/,
+      );
+
+    if (defaultImport) {
+      bindings.push({
+        localName:
+          defaultImport[1],
+        specifier:
+          source,
+        line:
+          i + 1,
+        namespace:
+          false,
+      });
+    }
+
+    const namedBlock =
+      line.match(
+        /\{([^}]+)\}/,
+      )
+      ?.[1];
+
+    if (!namedBlock) {
+      continue;
+    }
+
+    for (
+      const rawPart
+      of namedBlock.split(
+        ",",
+      )
+    ) {
+      const part =
+        rawPart.trim();
+
+      if (!part) {
+        continue;
+      }
+
+      const aliasMatch =
+        part.match(
+          /^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/,
+        );
+
+      const directMatch =
+        part.match(
+          /^([A-Za-z_$][A-Za-z0-9_$]*)$/,
+        );
+
+      const localName =
+        aliasMatch
+          ? aliasMatch[2]
+          : directMatch
+            ? directMatch[1]
+            : undefined;
+
+      if (!localName) {
+        continue;
+      }
+
+      bindings.push({
+        localName,
+        specifier:
+          source,
+        line:
+          i + 1,
+        namespace:
+          false,
+      });
+    }
+  }
+
+  return bindings;
+}
+
+function normalizeRepoPath(
+  value: string,
+): string {
+  const parts:
+    string[] = [];
+
+  for (
+    const part
+    of value.split(
+      "/",
+    )
+  ) {
+    if (
+      !part
+      || part === "."
+    ) {
+      continue;
+    }
+
+    if (
+      part === ".."
+    ) {
+      parts.pop();
+      continue;
+    }
+
+    parts.push(
+      part,
+    );
+  }
+
+  return parts.join(
+    "/",
+  );
+}
+
+function dirname(
+  value: string,
+): string {
+  const index =
+    value.lastIndexOf(
+      "/",
+    );
+
+  return index < 0
+    ? ""
+    : value.slice(
+        0,
+        index,
+      );
+}
+
+function resolveRelativeModule(
+  importerPath: string,
+  specifier: string,
+  repositoryPaths:
+    ReadonlySet<string>,
+): string | undefined {
+  if (
+    !specifier.startsWith(
+      ".",
+    )
+  ) {
+    return undefined;
+  }
+
+  const base =
+    normalizeRepoPath(
+      [
+        dirname(
+          importerPath,
+        ),
+        specifier,
+      ]
+        .filter(
+          Boolean,
+        )
+        .join(
+          "/",
+        ),
+    );
+
+  const candidates = [
+    base,
+    `${base}.tsx`,
+    `${base}.jsx`,
+    `${base}.ts`,
+    `${base}.js`,
+    `${base}/index.tsx`,
+    `${base}/index.jsx`,
+    `${base}/index.ts`,
+    `${base}/index.js`,
+  ];
+
+  return candidates.find(
+    (candidate) =>
+      repositoryPaths.has(
+        candidate,
+      ),
+  );
+}
+
+export function resolveUiComponentUsages(
+  path: string,
+  content: string,
+  repositoryPaths:
+    readonly string[],
+): UiComponentUsage[] {
+  const usages =
+    extractUiComponentUsages(
+      content,
+    );
+
+  const bindings =
+    extractUiImportBindings(
+      content,
+    );
+
+  const snapshotPaths =
+    new Set(
+      repositoryPaths,
+    );
+
+  const bindingsByName =
+    new Map<
+      string,
+      UiImportBinding
+    >();
+
+  for (
+    const binding
+    of bindings
+  ) {
+    bindingsByName.set(
+      binding.localName,
+      binding,
+    );
+  }
+
+  return usages.map(
+    (usage) => {
+      const rootName =
+        usage.name.split(
+          ".",
+          1,
+        )[0];
+
+      const binding =
+        bindingsByName.get(
+          rootName,
+        );
+
+      if (!binding) {
+        return usage;
+      }
+
+      if (
+        binding.namespace
+        && !usage.name.startsWith(
+          `${binding.localName}.`,
+        )
+      ) {
+        return usage;
+      }
+
+      const importedFrom =
+        resolveRelativeModule(
+          path,
+          binding.specifier,
+          snapshotPaths,
+        );
+
+      if (!importedFrom) {
+        return usage;
+      }
+
+      return {
+        ...usage,
+        importedFrom,
+        importLine:
+          binding.line,
+      };
+    },
+  );
 }
 
 function evidenceKey(
@@ -674,6 +1001,66 @@ export function buildUiGraph(
         evidence:
           componentEvidence,
       });
+
+      if (
+        component.importedFrom
+      ) {
+        const importedFileId =
+          fileNodeId(
+            component.importedFrom,
+          );
+
+        const importedFileEvidence:
+          UiGraphEvidence[] = [
+            {
+              path:
+                component.importedFrom,
+            },
+          ];
+
+        addNode({
+          id:
+            importedFileId,
+          kind:
+            "source_file",
+          label:
+            component.importedFrom,
+          evidence:
+            importedFileEvidence,
+        });
+
+        const importEvidence:
+          UiGraphEvidence[] = [
+            {
+              path:
+                file.path,
+              line:
+                component.importLine
+                ?? component.line,
+            },
+            {
+              path:
+                component.importedFrom,
+            },
+          ];
+
+        addEdge({
+          id:
+            edgeId(
+              "imports_from",
+              componentId,
+              importedFileId,
+            ),
+          kind:
+            "imports_from",
+          source:
+            componentId,
+          target:
+            importedFileId,
+          evidence:
+            importEvidence,
+        });
+      }
     }
 
     for (
@@ -919,6 +1306,9 @@ function mermaidEdgeLabel(
 
     case "renders":
       return "renders";
+
+    case "imports_from":
+      return "imports from";
 
     case "shows_state":
       return "shows state";
