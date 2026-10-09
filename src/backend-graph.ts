@@ -14,6 +14,34 @@ export type BackendRoute = {
   handlerImportLine?: number;
 };
 
+export type BackendRouterMount = {
+  path: string;
+  line: number;
+  router: string;
+  routerImportedFrom: string;
+  routerImportLine?: number;
+};
+
+export type BackendSourceFile = {
+  path: string;
+  content: string;
+};
+
+export type BackendMountStep = {
+  sourcePath: string;
+  path: string;
+  line: number;
+  router: string;
+  targetPath: string;
+};
+
+export type BackendResolvedRoute =
+  BackendRoute & {
+    sourcePath: string;
+    fullPath: string;
+    mountChain: BackendMountStep[];
+  };
+
 export type BackendGraphEvidence = {
   path: string;
   line?: number;
@@ -713,6 +741,447 @@ function handlerReference(
       ? trimmed
       : undefined
   );
+}
+
+function routerReference(
+  value: string,
+): string | undefined {
+  const trimmed =
+    value.trim();
+
+  const match =
+    trimmed.match(
+      /^([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*)(?:\(\s*\))?$/,
+    );
+
+  return match?.[1];
+}
+
+export function extractExpressRouterMounts(
+  content: string,
+  path: string,
+  repositoryPaths:
+    readonly string[],
+): BackendRouterMount[] {
+  const snapshotPaths =
+    new Set(
+      repositoryPaths,
+    );
+
+  const bindings =
+    new Map<
+      string,
+      ImportBinding
+    >();
+
+  for (
+    const binding
+    of extractImports(
+      content,
+    )
+  ) {
+    bindings.set(
+      binding.localName,
+      binding,
+    );
+  }
+
+  const mounts:
+    BackendRouterMount[] = [];
+
+  const pattern =
+    /\b(?:router|app)\.use\s*\(/g;
+
+  let match:
+    RegExpExecArray | null;
+
+  while (
+    (
+      match =
+        pattern.exec(
+          content,
+        )
+    )
+    !== null
+  ) {
+    const openIndex =
+      pattern.lastIndex - 1;
+
+    const closeIndex =
+      findMatchingParen(
+        content,
+        openIndex,
+      );
+
+    if (
+      closeIndex === undefined
+    ) {
+      continue;
+    }
+
+    pattern.lastIndex =
+      closeIndex + 1;
+
+    const args =
+      splitTopLevelArgs(
+        content.slice(
+          openIndex + 1,
+          closeIndex,
+        ),
+      );
+
+    if (
+      args.length === 0
+    ) {
+      continue;
+    }
+
+    const explicitPath =
+      stringLiteralValue(
+        args[0],
+      );
+
+    const mountPath =
+      explicitPath
+        ?? "/";
+
+    const candidateArgs =
+      explicitPath
+        ? args.slice(
+            1,
+          )
+        : args;
+
+    let router:
+      string | undefined;
+
+    let binding:
+      ImportBinding | undefined;
+
+    for (
+      let i =
+        candidateArgs.length - 1;
+      i >= 0;
+      i--
+    ) {
+      const candidate =
+        routerReference(
+          candidateArgs[i],
+        );
+
+      if (!candidate) {
+        continue;
+      }
+
+      const root =
+        candidate.split(
+          ".",
+        )[0];
+
+      const candidateBinding =
+        bindings.get(
+          root,
+        );
+
+      if (!candidateBinding) {
+        continue;
+      }
+
+      if (
+        candidateBinding.namespace
+        && !candidate.includes(
+          ".",
+        )
+      ) {
+        continue;
+      }
+
+      router =
+        candidate;
+
+      binding =
+        candidateBinding;
+
+      break;
+    }
+
+    if (
+      !router
+      || !binding
+    ) {
+      continue;
+    }
+
+    const importedFrom =
+      resolveRelativeModule(
+        path,
+        binding.specifier,
+        snapshotPaths,
+      );
+
+    if (!importedFrom) {
+      continue;
+    }
+
+    mounts.push({
+      path:
+        mountPath,
+      line:
+        lineNumberAt(
+          content,
+          match.index,
+        ),
+      router,
+      routerImportedFrom:
+        importedFrom,
+      routerImportLine:
+        binding.line,
+    });
+  }
+
+  return mounts;
+}
+
+function joinRoutePaths(
+  prefix: string,
+  suffix: string,
+): string {
+  const joined =
+    [
+      prefix,
+      suffix,
+    ]
+      .join(
+        "/",
+      )
+      .replace(
+        /\/{2,}/g,
+        "/",
+      );
+
+  const withLeadingSlash =
+    joined.startsWith(
+      "/",
+    )
+      ? joined
+      : `/${joined}`;
+
+  if (
+    withLeadingSlash.length > 1
+    && withLeadingSlash.endsWith(
+      "/",
+    )
+  ) {
+    return withLeadingSlash.slice(
+      0,
+      -1,
+    );
+  }
+
+  return (
+    withLeadingSlash
+    || "/"
+  );
+}
+
+export function resolveExpressRouteTree(
+  files:
+    readonly BackendSourceFile[],
+  repositoryPaths:
+    readonly string[],
+  entryPaths:
+    readonly string[],
+): BackendResolvedRoute[] {
+  const parsed =
+    new Map<
+      string,
+      {
+        routes: BackendRoute[];
+        mounts: BackendRouterMount[];
+      }
+    >();
+
+  for (
+    const file
+    of files
+  ) {
+    parsed.set(
+      file.path,
+      {
+        routes:
+          extractExpressRoutes(
+            file.content,
+            file.path,
+            repositoryPaths,
+          ),
+        mounts:
+          extractExpressRouterMounts(
+            file.content,
+            file.path,
+            repositoryPaths,
+          ),
+      },
+    );
+  }
+
+  const resolved:
+    BackendResolvedRoute[] = [];
+
+  function visit(
+    sourcePath: string,
+    prefix: string,
+    mountChain:
+      BackendMountStep[],
+    ancestry:
+      ReadonlySet<string>,
+  ) {
+    const current =
+      parsed.get(
+        sourcePath,
+      );
+
+    if (!current) {
+      return;
+    }
+
+    for (
+      const route
+      of current.routes
+    ) {
+      resolved.push({
+        ...route,
+        sourcePath,
+        fullPath:
+          joinRoutePaths(
+            prefix,
+            route.path,
+          ),
+        mountChain:
+          mountChain.map(
+            (step) => ({
+              ...step,
+            }),
+          ),
+      });
+    }
+
+    for (
+      const mount
+      of current.mounts
+    ) {
+      const targetPath =
+        mount.routerImportedFrom;
+
+      if (
+        !parsed.has(
+          targetPath,
+        )
+      ) {
+        continue;
+      }
+
+      if (
+        ancestry.has(
+          targetPath,
+        )
+      ) {
+        continue;
+      }
+
+      const nextPrefix =
+        joinRoutePaths(
+          prefix,
+          mount.path,
+        );
+
+      const nextChain = [
+        ...mountChain,
+        {
+          sourcePath,
+          path:
+            mount.path,
+          line:
+            mount.line,
+          router:
+            mount.router,
+          targetPath,
+        },
+      ];
+
+      const nextAncestry =
+        new Set(
+          ancestry,
+        );
+
+      nextAncestry.add(
+        targetPath,
+      );
+
+      visit(
+        targetPath,
+        nextPrefix,
+        nextChain,
+        nextAncestry,
+      );
+    }
+  }
+
+  for (
+    const entryPath
+    of entryPaths
+  ) {
+    if (
+      !parsed.has(
+        entryPath,
+      )
+    ) {
+      continue;
+    }
+
+    visit(
+      entryPath,
+      "/",
+      [],
+      new Set([
+        entryPath,
+      ]),
+    );
+  }
+
+  const unique =
+    new Map<
+      string,
+      BackendResolvedRoute
+    >();
+
+  for (
+    const route
+    of resolved
+  ) {
+    const key = [
+      route.method,
+      route.fullPath,
+      route.sourcePath,
+      route.line,
+    ].join(
+      ":",
+    );
+
+    if (
+      !unique.has(
+        key,
+      )
+    ) {
+      unique.set(
+        key,
+        route,
+      );
+    }
+  }
+
+  return [
+    ...unique.values(),
+  ];
 }
 
 export function extractExpressRoutes(
