@@ -54,6 +54,12 @@ const suites:
     },
     {
       label:
+        "Cross-layer process graph",
+      script:
+        "test:process-graph",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",

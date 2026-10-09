@@ -134,6 +134,31 @@ function uiHttpMethod(
   return undefined;
 }
 
+function looksLikeHttpClientReceiver(
+  value: string,
+): boolean {
+  const root =
+    value
+      .split(
+        ".",
+      )[0]
+      .toLowerCase();
+
+  return (
+    root === "axios"
+    || root === "client"
+    || root.includes(
+      "http",
+    )
+    || root.endsWith(
+      "api",
+    )
+    || root.endsWith(
+      "client",
+    )
+  );
+}
+
 export function extractUiFlowEvents(
   content: string,
 ): UiFlowEvent[] {
@@ -190,24 +215,30 @@ export function extractUiFlowEvents(
       });
     }
 
-    const axiosCall =
+    const clientCall =
       line.match(
-        /\baxios\.(get|post|put|patch|delete)\s*\(\s*["'`]([^"'`]+)["'`]/i,
+        /\b([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*)\.(get|post|put|patch|delete)\s*\(\s*["'`]([^"'`]+)["'`]/i,
       );
 
-    if (axiosCall) {
-      events.push({
-        type:
-          "api_call",
-        line:
-          lineNo,
-        target:
-          axiosCall[2],
-        method:
-          uiHttpMethod(
-            axiosCall[1],
-          ),
-      });
+    if (clientCall) {
+      if (
+        looksLikeHttpClientReceiver(
+          clientCall[1],
+        )
+      ) {
+        events.push({
+          type:
+            "api_call",
+          line:
+            lineNo,
+          target:
+            clientCall[3],
+          method:
+            uiHttpMethod(
+              clientCall[2],
+            ),
+        });
+      }
     }
 
     const fetchCall =
