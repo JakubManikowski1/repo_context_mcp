@@ -9,11 +9,19 @@ export type UiFlowEventType =
   | "error_state"
   | "empty_state";
 
+export type UiHttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE";
+
 export type UiFlowEvent = {
   type: UiFlowEventType;
   line: number;
   target?: string;
   text?: string;
+  method?: UiHttpMethod;
 };
 
 export type UiComponentUsage = {
@@ -105,6 +113,27 @@ function clean(
   );
 }
 
+function uiHttpMethod(
+  value:
+    string
+    | undefined,
+): UiHttpMethod | undefined {
+  const method =
+    value?.toUpperCase();
+
+  if (
+    method === "GET"
+    || method === "POST"
+    || method === "PUT"
+    || method === "PATCH"
+    || method === "DELETE"
+  ) {
+    return method;
+  }
+
+  return undefined;
+}
+
 export function extractUiFlowEvents(
   content: string,
 ): UiFlowEvent[] {
@@ -161,20 +190,54 @@ export function extractUiFlowEvents(
       });
     }
 
-    const apiCall =
+    const axiosCall =
       line.match(
-        /\b(?:fetch|axios\.(?:get|post|put|patch|delete))\s*\(\s*["'`]([^"'`]+)["'`]/,
-      )
-      ?.[1];
+        /\baxios\.(get|post|put|patch|delete)\s*\(\s*["'`]([^"'`]+)["'`]/i,
+      );
 
-    if (apiCall) {
+    if (axiosCall) {
       events.push({
         type:
           "api_call",
         line:
           lineNo,
         target:
-          apiCall,
+          axiosCall[2],
+        method:
+          uiHttpMethod(
+            axiosCall[1],
+          ),
+      });
+    }
+
+    const fetchCall =
+      line.match(
+        /\bfetch\s*\(\s*["'`]([^"'`]+)["'`]/,
+      );
+
+    if (fetchCall) {
+      const explicitMethod =
+        line.match(
+          /\bmethod\s*:\s*["'`](get|post|put|patch|delete)["'`]/i,
+        )?.[1];
+
+      events.push({
+        type:
+          "api_call",
+        line:
+          lineNo,
+        target:
+          fetchCall[1],
+        ...(
+          explicitMethod
+            ? {
+                method:
+                  uiHttpMethod(
+                    explicitMethod,
+                  ),
+              }
+            : {}
+        ),
       });
     }
 

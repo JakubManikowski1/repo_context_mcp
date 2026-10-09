@@ -98,6 +98,60 @@ function main() {
     ),
   );
 
+  const apiMethodEvents =
+    extractUiFlowEvents(
+      [
+        'axios.get("/api/clients");',
+        'axios.post("/api/invoices", payload);',
+        'axios.patch("/api/invoices/123", payload);',
+        'fetch("/api/unknown");',
+        'fetch("/api/manual", { method: "PUT" });',
+        "fetch('/api/delete', { method: 'delete' });",
+      ].join(
+        "\n",
+      ),
+    )
+      .filter(
+        (event) =>
+          event.type
+            === "api_call",
+      );
+
+  assert.deepEqual(
+    apiMethodEvents.map(
+      (event) => [
+        event.target,
+        event.method,
+      ],
+    ),
+    [
+      [
+        "/api/clients",
+        "GET",
+      ],
+      [
+        "/api/invoices",
+        "POST",
+      ],
+      [
+        "/api/invoices/123",
+        "PATCH",
+      ],
+      [
+        "/api/unknown",
+        undefined,
+      ],
+      [
+        "/api/manual",
+        "PUT",
+      ],
+      [
+        "/api/delete",
+        "DELETE",
+      ],
+    ],
+  );
+
   const components =
     extractUiComponentUsages(
       content,
