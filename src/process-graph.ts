@@ -785,6 +785,107 @@ type ImportedFunctionCall = {
   line: number;
 };
 
+type ReExportedFunction = {
+  servicePath: string;
+  serviceFunction: string;
+  line: number;
+};
+
+function reExportedFunction(
+  content: string,
+  sourcePath: string,
+  exportedName: string,
+  repositoryPaths:
+    ReadonlySet<string>,
+): ReExportedFunction | undefined {
+  const pattern =
+    /\bexport\s*\{([\s\S]*?)\}\s*from\s*["'`]([^"'`]+)["'`]/g;
+
+  let match:
+    RegExpExecArray | null;
+
+  while (
+    (
+      match =
+        pattern.exec(
+          content,
+        )
+    )
+    !== null
+  ) {
+    const targetPath =
+      resolveProcessModule(
+        sourcePath,
+        match[2],
+        repositoryPaths,
+      );
+
+    if (!targetPath) {
+      continue;
+    }
+
+    for (
+      const rawPart
+      of match[1]
+        .split(
+          ",",
+        )
+    ) {
+      const part =
+        rawPart.trim();
+
+      if (!part) {
+        continue;
+      }
+
+      const alias =
+        part.match(
+          /^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/,
+        );
+
+      const direct =
+        part.match(
+          /^([A-Za-z_$][A-Za-z0-9_$]*)$/,
+        );
+
+      const serviceFunction =
+        alias
+          ? alias[1]
+          : direct
+            ? direct[1]
+            : undefined;
+
+      const visibleName =
+        alias
+          ? alias[2]
+          : direct
+            ? direct[1]
+            : undefined;
+
+      if (
+        !serviceFunction
+        || visibleName
+          !== exportedName
+      ) {
+        continue;
+      }
+
+      return {
+        servicePath:
+          targetPath,
+        serviceFunction,
+        line:
+          processLineNumberAt(
+            content,
+            match.index,
+          ),
+      };
+    }
+  }
+
+  return undefined;
+}
+
 function importedCallsFromFunction(
   content: string,
   sourcePath: string,
@@ -1051,20 +1152,81 @@ export function linkBackendRoutesToDirectDbCollections(
       );
 
     for (const call of calls) {
-      const serviceContent =
+      let servicePath =
+        call.servicePath;
+
+      let serviceFunction =
+        call.serviceFunction;
+
+      let serviceContent =
         filesByPath.get(
-          call.servicePath,
+          servicePath,
         );
 
       if (!serviceContent) {
         continue;
       }
 
-      const collections =
+      let collections =
         directPocketBaseCollections(
           serviceContent,
-          call.serviceFunction,
+          serviceFunction,
         );
+
+      let reExportEvidence:
+        BackendDbCollectionEvidence
+        | undefined;
+
+      if (
+        collections.length === 0
+      ) {
+        const reExport =
+          reExportedFunction(
+            serviceContent,
+            servicePath,
+            serviceFunction,
+            snapshotPaths,
+          );
+
+        if (reExport) {
+          const resolvedContent =
+            filesByPath.get(
+              reExport.servicePath,
+            );
+
+          if (resolvedContent) {
+            const resolvedCollections =
+              directPocketBaseCollections(
+                resolvedContent,
+                reExport.serviceFunction,
+              );
+
+            if (
+              resolvedCollections.length
+                > 0
+            ) {
+              reExportEvidence = {
+                path:
+                  servicePath,
+                line:
+                  reExport.line,
+              };
+
+              servicePath =
+                reExport.servicePath;
+
+              serviceFunction =
+                reExport.serviceFunction;
+
+              serviceContent =
+                resolvedContent;
+
+              collections =
+                resolvedCollections;
+            }
+          }
+        }
+      }
 
       for (
         const access
@@ -1076,8 +1238,8 @@ export function linkBackendRoutesToDirectDbCollections(
           route.sourcePath,
           route.line,
           controllerPath,
-          call.servicePath,
-          call.serviceFunction,
+          servicePath,
+          serviceFunction,
           access.collection,
         ].join(
           "|",
@@ -1094,10 +1256,8 @@ export function linkBackendRoutesToDirectDbCollections(
             handler:
               route.handler,
             controllerPath,
-            servicePath:
-              call.servicePath,
-            serviceFunction:
-              call.serviceFunction,
+            servicePath,
+            serviceFunction,
             collection:
               access.collection,
             evidence: [],
@@ -1129,11 +1289,20 @@ export function linkBackendRoutesToDirectDbCollections(
           },
         );
 
+        if (
+          reExportEvidence
+        ) {
+          addDbEvidence(
+            link.evidence,
+            reExportEvidence,
+          );
+        }
+
         addDbEvidence(
           link.evidence,
           {
             path:
-              call.servicePath,
+              servicePath,
             line:
               access.line,
           },

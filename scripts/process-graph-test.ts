@@ -446,6 +446,139 @@ function main() {
     ],
   );
 
+  const barrelDbFiles = [
+    {
+      path:
+        "apps/api/src/controllers/pricingController.js",
+      content: [
+        "import * as pocketbaseService from '../services/pocketbaseService.js';",
+        "",
+        "const getParams = async (req, res) => {",
+        "  const result = await pocketbaseService.getPricingParams();",
+        "  res.json(result);",
+        "};",
+      ].join(
+        "\n",
+      ),
+    },
+    {
+      path:
+        "apps/api/src/services/pocketbaseService.js",
+      content: [
+        "export {",
+        "  getPricingParams,",
+        "  unrelatedPricingFunction,",
+        "} from './pricingService.js';",
+      ].join(
+        "\n",
+      ),
+    },
+    {
+      path:
+        "apps/api/src/services/pricingService.js",
+      content: [
+        "export const getPricingParams = async () => {",
+        "  return pb.collection('pricing_params').getFullList();",
+        "};",
+        "",
+        "export const unrelatedPricingFunction = async () => {",
+        "  return pb.collection('should_not_link_from_barrel').getFullList();",
+        "};",
+      ].join(
+        "\n",
+      ),
+    },
+  ];
+
+  const barrelDbRoutes:
+    BackendResolvedRoute[] = [
+      {
+        method:
+          "GET",
+        path:
+          "/pricing-params",
+        fullPath:
+          "/pricing-params",
+        sourcePath:
+          "apps/api/src/routes/pricingRoutes.js",
+        line:
+          18,
+        handler:
+          "pricingController.getParams",
+        handlerImportedFrom:
+          "apps/api/src/controllers/pricingController.js",
+        handlerImportLine:
+          2,
+        mountChain: [],
+      },
+    ];
+
+  const barrelDbLinks =
+    linkBackendRoutesToDirectDbCollections(
+      barrelDbRoutes,
+      barrelDbFiles,
+    );
+
+  assert.deepEqual(
+    barrelDbLinks.map(
+      (link) => [
+        link.route.fullPath,
+        link.handler,
+        link.servicePath,
+        link.serviceFunction,
+        link.collection,
+      ],
+    ),
+    [
+      [
+        "/pricing-params",
+        "pricingController.getParams",
+        "apps/api/src/services/pricingService.js",
+        "getPricingParams",
+        "pricing_params",
+      ],
+    ],
+  );
+
+  assert.ok(
+    !barrelDbLinks.some(
+      (link) =>
+        link.collection
+          === "should_not_link_from_barrel",
+    ),
+  );
+
+  assert.deepEqual(
+    barrelDbLinks[0]
+      .evidence,
+    [
+      {
+        path:
+          "apps/api/src/routes/pricingRoutes.js",
+        line:
+          18,
+      },
+      {
+        path:
+          "apps/api/src/controllers/pricingController.js",
+        line:
+          4,
+      },
+      {
+        path:
+          "apps/api/src/services/pocketbaseService.js",
+        line:
+          1,
+      },
+      {
+        path:
+          "apps/api/src/services/pricingService.js",
+        line:
+          2,
+      },
+    ],
+  );
+
   console.log(
     "Cross-layer process graph: OK",
   );
