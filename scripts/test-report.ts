@@ -90,6 +90,12 @@ const suites:
     },
     {
       label:
+        "Page render execution renderer",
+      script:
+        "test:page-render-execution-renderer",
+    },
+    {
+      label:
         "Page render MCP tool",
       script:
         "test:page-render-tool",
