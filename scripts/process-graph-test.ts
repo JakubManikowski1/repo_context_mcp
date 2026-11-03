@@ -5,6 +5,7 @@ import type {
 } from "../src/backend-graph.js";
 
 import {
+  linkBackendRoutesToDirectDbCollections,
   matchUiApiCallsToBackend,
 } from "../src/process-graph.js";
 
@@ -274,6 +275,175 @@ function main() {
   assert.deepEqual(
     external,
     [],
+  );
+
+  const dbRouteFiles = [
+    {
+      path:
+        "apps/api/src/controllers/contentController.js",
+      content: [
+        "import * as contentService from '../services/contentService.js';",
+        "import { loadCompany as companyLookup } from '../services/companyService.js';",
+        "",
+        "const listPublicArticles = async (req, res) => {",
+        "  const result = await contentService.listPublicContent({ type: 'article' });",
+        "  res.json(result);",
+        "};",
+        "",
+        "const getCompany = async (req, res) => {",
+        "  const result = await companyLookup(req.params.id);",
+        "  res.json(result);",
+        "};",
+      ].join(
+        "\n",
+      ),
+    },
+    {
+      path:
+        "apps/api/src/services/contentService.js",
+      content: [
+        "const helper = async () => {",
+        "  return pb.collection('content_categories').getFullList();",
+        "};",
+        "",
+        "const listPublicContent = async () => {",
+        "  const rows = await pb.collection('content_items').getFullList();",
+        "  await helper();",
+        "  return rows;",
+        "};",
+        "",
+        "const unrelated = async () => {",
+        "  return pb.collection('should_not_link').getFullList();",
+        "};",
+      ].join(
+        "\n",
+      ),
+    },
+    {
+      path:
+        "apps/api/src/services/companyService.js",
+      content: [
+        "export const loadCompany = async (id) => {",
+        "  return pb.collection('companies').getOne(id);",
+        "};",
+      ].join(
+        "\n",
+      ),
+    },
+  ];
+
+  const dbRoutes:
+    BackendResolvedRoute[] = [
+      {
+        method:
+          "GET",
+        path:
+          "/articles",
+        fullPath:
+          "/content/articles",
+        sourcePath:
+          "apps/api/src/routes/contentRoutes.js",
+        line:
+          12,
+        handler:
+          "contentController.listPublicArticles",
+        handlerImportedFrom:
+          "apps/api/src/controllers/contentController.js",
+        handlerImportLine:
+          2,
+        mountChain: [],
+      },
+      {
+        method:
+          "GET",
+        path:
+          "/companies/:id",
+        fullPath:
+          "/admin/companies/:id",
+        sourcePath:
+          "apps/api/src/routes/companyRoutes.js",
+        line:
+          20,
+        handler:
+          "getCompany",
+        handlerImportedFrom:
+          "apps/api/src/controllers/contentController.js",
+        handlerImportLine:
+          3,
+        mountChain: [],
+      },
+    ];
+
+  const dbLinks =
+    linkBackendRoutesToDirectDbCollections(
+      dbRoutes,
+      dbRouteFiles,
+    );
+
+  assert.deepEqual(
+    dbLinks.map(
+      (link) => [
+        link.route.fullPath,
+        link.handler,
+        link.serviceFunction,
+        link.collection,
+      ],
+    ),
+    [
+      [
+        "/content/articles",
+        "contentController.listPublicArticles",
+        "listPublicContent",
+        "content_items",
+      ],
+      [
+        "/admin/companies/:id",
+        "getCompany",
+        "loadCompany",
+        "companies",
+      ],
+    ],
+  );
+
+  assert.ok(
+    !dbLinks.some(
+      (link) =>
+        link.collection
+          === "content_categories",
+    ),
+  );
+
+  assert.ok(
+    !dbLinks.some(
+      (link) =>
+        link.collection
+          === "should_not_link",
+    ),
+  );
+
+  assert.deepEqual(
+    dbLinks[0]
+      .evidence,
+    [
+      {
+        path:
+          "apps/api/src/routes/contentRoutes.js",
+        line:
+          12,
+      },
+      {
+        path:
+          "apps/api/src/controllers/contentController.js",
+        line:
+          5,
+      },
+      {
+        path:
+          "apps/api/src/services/contentService.js",
+        line:
+          6,
+      },
+    ],
   );
 
   console.log(
