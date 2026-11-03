@@ -38,7 +38,8 @@
     "test:connect-server-e2e": "tsx scripts/github-connect-server-e2e-test.ts",
     "test:page-render-policy": "tsx scripts/page-render-policy-test.ts",
     "test:page-renderer": "tsx scripts/page-renderer-test.ts",
-    "smoke:page-render": "tsx scripts/page-render-smoke.ts"
+    "smoke:page-render": "tsx scripts/page-render-smoke.ts",
+    "test:page-render-target": "tsx scripts/page-render-target-test.ts"
   },
   "keywords": [
     "mcp",

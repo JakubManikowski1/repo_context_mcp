@@ -72,6 +72,12 @@ const suites:
     },
     {
       label:
+        "Page render target access",
+      script:
+        "test:page-render-target",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",
