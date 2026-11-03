@@ -51,6 +51,7 @@ import {
 } from "./page-render-server.js";
 
 import {
+  createPageRenderTargetToolRenderer,
   registerPageRenderTools,
 } from "./page-render-tool.js";
 
@@ -235,7 +236,9 @@ GENERAL
     registerPageRenderTools(
       server,
       repositoryAccess,
-      pageRenderTargetAccess,
+      createPageRenderTargetToolRenderer(
+        pageRenderTargetAccess,
+      ),
     );
   }
 

@@ -13,6 +13,7 @@ import type {
 } from "../src/page-render-target.js";
 
 import {
+  createPageRenderTargetToolRenderer,
   registerPageRenderTools,
   runPageRenderTool,
 } from "../src/page-render-tool.js";
@@ -72,16 +73,9 @@ let receivedRepositoryKey:
 let receivedRoute:
   string | undefined;
 
-const execution =
-  await runPageRenderTool(
-    repositoryAccess,
+const renderer =
+  createPageRenderTargetToolRenderer(
     targetAccess,
-    {
-      repository_id:
-        "conn-a",
-      route:
-        "/admin/customers",
-    },
     async (
       receivedTargetAccess,
       repositoryKey,
@@ -136,6 +130,18 @@ const execution =
         warnings:
           [],
       };
+    },
+  );
+
+const execution =
+  await runPageRenderTool(
+    repositoryAccess,
+    renderer,
+    {
+      repository_id:
+        "conn-a",
+      route:
+        "/admin/customers",
     },
   );
 
@@ -253,7 +259,7 @@ const fakeServer = {
 registerPageRenderTools(
   fakeServer,
   repositoryAccess,
-  targetAccess,
+  renderer,
 );
 
 assert.equal(

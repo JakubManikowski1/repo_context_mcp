@@ -67,16 +67,43 @@ export type RenderPageForRepository =
     route: string,
   ) => Promise<PageRenderSnapshot>;
 
-export async function runPageRenderTool(
-  repositoryAccess:
-    RepositoryToolAccess,
+export interface PageRenderToolRenderer {
+  render(
+    repositoryKey: string,
+    route: string,
+  ):
+    Promise<PageRenderSnapshot>;
+}
+
+export function createPageRenderTargetToolRenderer(
   targetAccess:
     PageRenderTargetAccess,
-  input:
-    PageRenderToolInput,
   renderPage:
     RenderPageForRepository =
       renderPageForRepository,
+):
+  PageRenderToolRenderer {
+  return {
+    async render(
+      repositoryKey,
+      route,
+    ) {
+      return renderPage(
+        targetAccess,
+        repositoryKey,
+        route,
+      );
+    },
+  };
+}
+
+export async function runPageRenderTool(
+  repositoryAccess:
+    RepositoryToolAccess,
+  renderer:
+    PageRenderToolRenderer,
+  input:
+    PageRenderToolInput,
 ): Promise<PageRenderToolExecution> {
   const repository =
     await repositoryAccess.resolve(
@@ -84,8 +111,7 @@ export async function runPageRenderTool(
     );
 
   const snapshot =
-    await renderPage(
-      targetAccess,
+    await renderer.render(
       repository.key,
       input.route,
     );
@@ -138,8 +164,8 @@ export function registerPageRenderTools(
     McpServer,
   repositoryAccess:
     RepositoryToolAccess,
-  targetAccess:
-    PageRenderTargetAccess,
+  renderer:
+    PageRenderToolRenderer,
 ) {
   server.registerTool(
     "page_render",
@@ -173,7 +199,7 @@ export function registerPageRenderTools(
       const execution =
         await runPageRenderTool(
           repositoryAccess,
-          targetAccess,
+          renderer,
           input,
         );
 
