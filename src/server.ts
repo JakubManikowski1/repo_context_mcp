@@ -221,10 +221,13 @@ GENERAL
   );
 
   const pageRenderTargetAccess =
-    pageRenderTargetAccessForRequest(
-      pageRenderBinding,
-      legacyRepository,
-    );
+    serverRuntime.mode === "legacy" &&
+    !legacyRepository
+      ? null
+      : pageRenderTargetAccessForRequest(
+          pageRenderBinding,
+          legacyRepository,
+        );
 
   if (
     pageRenderTargetAccess

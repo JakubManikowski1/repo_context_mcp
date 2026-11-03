@@ -81,6 +81,9 @@ async function listTools(
         REPO_CONTEXT_FEATURES:
           features ?? "",
 
+        REPO_CONTEXT_REPOSITORIES_FILE:
+          "",
+
         REPO_CONTEXT_RENDER_ORIGIN:
           "",
 
@@ -191,6 +194,58 @@ async function main() {
     }),
   );
 
+  const registryPath =
+    join(
+      directory,
+      "repositories.json",
+    );
+
+  writeFileSync(
+    registryPath,
+    JSON.stringify(
+      {
+        repositories: [
+          {
+            id:
+              "lf",
+
+            installationId:
+              12345678,
+
+            owner:
+              "tool-surface-owner",
+
+            repo:
+              "tool-surface-lf",
+
+            branch:
+              "main",
+          },
+
+          {
+            id:
+              "self",
+
+            installationId:
+              12345678,
+
+            owner:
+              "tool-surface-owner",
+
+            repo:
+              "tool-surface-self",
+
+            branch:
+              "main",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
   try {
     const core =
       await listTools(
@@ -284,6 +339,29 @@ async function main() {
         );
       }
     }
+
+    const staticRegistryWithRender =
+      await listTools(
+        3113,
+        privateKeyPath,
+        "ui",
+        {
+          REPO_CONTEXT_REPOSITORIES_FILE:
+            registryPath,
+
+          REPO_CONTEXT_RENDER_ORIGIN:
+            "http://127.0.0.1:5173",
+
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+        },
+      );
+
+    assertEqual(
+      staticRegistryWithRender,
+      [...CORE_TOOLS].sort(),
+      "static-registry-render-compatible",
+    );
 
     console.log(
       "Tool surface: OK",
