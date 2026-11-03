@@ -60,6 +60,12 @@ const suites:
     },
     {
       label:
+        "Page render policy",
+      script:
+        "test:page-render-policy",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",
