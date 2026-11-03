@@ -1,6 +1,6 @@
 {
   "name": "repo_context_mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Fast, read-only MCP server for GitHub issues and repository code with bounded context and HEAD-consistent reads.",
   "main": "dist/server.js",
   "scripts": {
