@@ -5,8 +5,10 @@ import type {
 } from "../src/backend-graph.js";
 
 import {
+  buildProcessGraph,
   linkBackendRoutesToDirectDbCollections,
   matchUiApiCallsToBackend,
+  renderProcessGraphMermaid,
 } from "../src/process-graph.js";
 
 import {
@@ -577,6 +579,211 @@ function main() {
           2,
       },
     ],
+  );
+
+  const unifiedRoute:
+    BackendResolvedRoute = {
+      method:
+        "GET",
+      path:
+        "/articles",
+      fullPath:
+        "/content/articles",
+      sourcePath:
+        "apps/api/src/routes/contentRoutes.js",
+      line:
+        12,
+      handler:
+        "contentController.listPublicArticles",
+      handlerImportedFrom:
+        "apps/api/src/controllers/contentController.js",
+      handlerImportLine:
+        2,
+      mountChain: [],
+    };
+
+  const unifiedUiLinks = [
+    {
+      ui: {
+        sourcePath:
+          "apps/web/src/api/contentApi.js",
+        line:
+          7,
+        target:
+          "/content/articles",
+        method:
+          "GET" as const,
+      },
+      backend:
+        unifiedRoute,
+    },
+  ];
+
+  const unifiedDbLinks = [
+    {
+      route:
+        unifiedRoute,
+      handler:
+        "contentController.listPublicArticles",
+      controllerPath:
+        "apps/api/src/controllers/contentController.js",
+      servicePath:
+        "apps/api/src/services/contentService.js",
+      serviceFunction:
+        "listPublicContent",
+      collection:
+        "content_items",
+      evidence: [
+        {
+          path:
+            "apps/api/src/routes/contentRoutes.js",
+          line:
+            12,
+        },
+        {
+          path:
+            "apps/api/src/controllers/contentController.js",
+          line:
+            5,
+        },
+        {
+          path:
+            "apps/api/src/services/pocketbaseService.js",
+          line:
+            80,
+        },
+        {
+          path:
+            "apps/api/src/services/contentService.js",
+          line:
+            220,
+        },
+      ],
+    },
+  ];
+
+  const unifiedGraph =
+    buildProcessGraph(
+      unifiedUiLinks,
+      unifiedDbLinks,
+    );
+
+  assert.deepEqual(
+    unifiedGraph.nodes.map(
+      (node) =>
+        node.kind,
+    ),
+    [
+      "ui_source",
+      "api_route",
+      "handler",
+      "service_function",
+      "db_collection",
+    ],
+  );
+
+  assert.deepEqual(
+    unifiedGraph.edges.map(
+      (edge) =>
+        edge.kind,
+    ),
+    [
+      "handled_by",
+      "calls_api",
+      "calls_service",
+      "accesses_collection",
+    ],
+  );
+
+  const handlerServiceEdge =
+    unifiedGraph.edges.find(
+      (edge) =>
+        edge.kind
+          === "calls_service",
+    );
+
+  assert.deepEqual(
+    handlerServiceEdge
+      ?.evidence,
+    [
+      {
+        path:
+          "apps/api/src/controllers/contentController.js",
+        line:
+          5,
+      },
+      {
+        path:
+          "apps/api/src/services/pocketbaseService.js",
+        line:
+          80,
+      },
+    ],
+  );
+
+  const collectionEdge =
+    unifiedGraph.edges.find(
+      (edge) =>
+        edge.kind
+          === "accesses_collection",
+    );
+
+  assert.deepEqual(
+    collectionEdge
+      ?.evidence,
+    [
+      {
+        path:
+          "apps/api/src/services/contentService.js",
+        line:
+          220,
+      },
+    ],
+  );
+
+  const unifiedMermaid =
+    renderProcessGraphMermaid(
+      unifiedGraph,
+    );
+
+  assert.match(
+    unifiedMermaid,
+    /flowchart LR/,
+  );
+
+  assert.match(
+    unifiedMermaid,
+    /UI: apps\/web\/src\/api\/contentApi\.js:7/,
+  );
+
+  assert.match(
+    unifiedMermaid,
+    /API: GET \/content\/articles/,
+  );
+
+  assert.match(
+    unifiedMermaid,
+    /Handler: contentController\.listPublicArticles/,
+  );
+
+  assert.match(
+    unifiedMermaid,
+    /Service: listPublicContent/,
+  );
+
+  assert.match(
+    unifiedMermaid,
+    /DB: content_items/,
+  );
+
+  assert.match(
+    unifiedMermaid,
+    /calls API/,
+  );
+
+  assert.match(
+    unifiedMermaid,
+    /accesses/,
   );
 
   console.log(

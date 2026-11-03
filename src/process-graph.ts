@@ -1315,3 +1315,561 @@ export function linkBackendRoutesToDirectDbCollections(
     ...links.values(),
   ];
 }
+
+
+export type ProcessGraphNodeKind =
+  | "ui_source"
+  | "api_route"
+  | "handler"
+  | "service_function"
+  | "db_collection";
+
+export type ProcessGraphEdgeKind =
+  | "calls_api"
+  | "handled_by"
+  | "calls_service"
+  | "accesses_collection";
+
+export type ProcessGraphNode = {
+  id: string;
+  kind: ProcessGraphNodeKind;
+  label: string;
+  path?: string;
+  line?: number;
+};
+
+export type ProcessGraphEdge = {
+  from: string;
+  to: string;
+  kind: ProcessGraphEdgeKind;
+  evidence: BackendDbCollectionEvidence[];
+};
+
+export type ProcessGraph = {
+  nodes: ProcessGraphNode[];
+  edges: ProcessGraphEdge[];
+};
+
+function processRouteNodeId(
+  route: BackendResolvedRoute,
+): string {
+  return [
+    "route",
+    route.method,
+    route.fullPath,
+    route.sourcePath,
+    route.line,
+  ].join(
+    ":",
+  );
+}
+
+function processHandlerNodeId(
+  path: string,
+  handler: string,
+): string {
+  return [
+    "handler",
+    path,
+    handler,
+  ].join(
+    ":",
+  );
+}
+
+function processServiceNodeId(
+  path: string,
+  serviceFunction: string,
+): string {
+  return [
+    "service",
+    path,
+    serviceFunction,
+  ].join(
+    ":",
+  );
+}
+
+function processCollectionNodeId(
+  collection: string,
+): string {
+  return [
+    "db",
+    collection,
+  ].join(
+    ":",
+  );
+}
+
+function processUiNodeId(
+  ui: UiApiCallReference,
+): string {
+  return [
+    "ui",
+    ui.sourcePath,
+    ui.line,
+  ].join(
+    ":",
+  );
+}
+
+function processPushEvidence(
+  target:
+    BackendDbCollectionEvidence[],
+  evidence:
+    readonly BackendDbCollectionEvidence[],
+) {
+  for (
+    const item
+    of evidence
+  ) {
+    if (
+      target.some(
+        (existing) =>
+          existing.path
+            === item.path
+          && existing.line
+            === item.line,
+      )
+    ) {
+      continue;
+    }
+
+    target.push({
+      path:
+        item.path,
+      line:
+        item.line,
+    });
+  }
+}
+
+export function buildProcessGraph(
+  uiLinks:
+    readonly UiBackendRouteLink[],
+  dbLinks:
+    readonly BackendDbCollectionLink[],
+): ProcessGraph {
+  const nodes =
+    new Map<
+      string,
+      ProcessGraphNode
+    >();
+
+  const edges =
+    new Map<
+      string,
+      ProcessGraphEdge
+    >();
+
+  const addNode = (
+    node: ProcessGraphNode,
+  ) => {
+    if (
+      !nodes.has(
+        node.id,
+      )
+    ) {
+      nodes.set(
+        node.id,
+        node,
+      );
+    }
+  };
+
+  const addEdge = (
+    from: string,
+    to: string,
+    kind: ProcessGraphEdgeKind,
+    evidence:
+      readonly BackendDbCollectionEvidence[],
+  ) => {
+    const key =
+      [
+        from,
+        kind,
+        to,
+      ].join(
+        "|",
+      );
+
+    let edge =
+      edges.get(
+        key,
+      );
+
+    if (!edge) {
+      edge = {
+        from,
+        to,
+        kind,
+        evidence: [],
+      };
+
+      edges.set(
+        key,
+        edge,
+      );
+    }
+
+    processPushEvidence(
+      edge.evidence,
+      evidence,
+    );
+  };
+
+  const addRouteAndHandler = (
+    route: BackendResolvedRoute,
+  ) => {
+    const routeId =
+      processRouteNodeId(
+        route,
+      );
+
+    addNode({
+      id:
+        routeId,
+      kind:
+        "api_route",
+      label:
+        `${route.method} ${route.fullPath}`,
+      path:
+        route.sourcePath,
+      line:
+        route.line,
+    });
+
+    if (
+      !route.handler
+      || !route.handlerImportedFrom
+    ) {
+      return {
+        routeId,
+        handlerId:
+          undefined,
+      };
+    }
+
+    const handlerId =
+      processHandlerNodeId(
+        route.handlerImportedFrom,
+        route.handler,
+      );
+
+    addNode({
+      id:
+        handlerId,
+      kind:
+        "handler",
+      label:
+        route.handler,
+      path:
+        route.handlerImportedFrom,
+      line:
+        route.handlerImportLine,
+    });
+
+    const evidence:
+      BackendDbCollectionEvidence[] = [
+        {
+          path:
+            route.sourcePath,
+          line:
+            route.line,
+        },
+      ];
+
+    if (
+      route.handlerImportLine
+        !== undefined
+    ) {
+      evidence.push({
+        path:
+          route.handlerImportedFrom,
+        line:
+          route.handlerImportLine,
+      });
+    }
+
+    addEdge(
+      routeId,
+      handlerId,
+      "handled_by",
+      evidence,
+    );
+
+    return {
+      routeId,
+      handlerId,
+    };
+  };
+
+  for (
+    const link
+    of uiLinks
+  ) {
+    const uiId =
+      processUiNodeId(
+        link.ui,
+      );
+
+    addNode({
+      id:
+        uiId,
+      kind:
+        "ui_source",
+      label:
+        `${link.ui.sourcePath}:${link.ui.line}`,
+      path:
+        link.ui.sourcePath,
+      line:
+        link.ui.line,
+    });
+
+    const {
+      routeId,
+    } =
+      addRouteAndHandler(
+        link.backend,
+      );
+
+    addEdge(
+      uiId,
+      routeId,
+      "calls_api",
+      [
+        {
+          path:
+            link.ui.sourcePath,
+          line:
+            link.ui.line,
+        },
+        {
+          path:
+            link.backend.sourcePath,
+          line:
+            link.backend.line,
+        },
+      ],
+    );
+  }
+
+  for (
+    const link
+    of dbLinks
+  ) {
+    const {
+      handlerId,
+    } =
+      addRouteAndHandler(
+        link.route,
+      );
+
+    if (!handlerId) {
+      continue;
+    }
+
+    const serviceId =
+      processServiceNodeId(
+        link.servicePath,
+        link.serviceFunction,
+      );
+
+    const collectionId =
+      processCollectionNodeId(
+        link.collection,
+      );
+
+    addNode({
+      id:
+        serviceId,
+      kind:
+        "service_function",
+      label:
+        link.serviceFunction,
+      path:
+        link.servicePath,
+    });
+
+    addNode({
+      id:
+        collectionId,
+      kind:
+        "db_collection",
+      label:
+        link.collection,
+    });
+
+    const handlerEvidence =
+      link.evidence.filter(
+        (item) =>
+          item.path
+            === link.controllerPath
+          || (
+            item.path
+              !== link.route.sourcePath
+            && item.path
+              !== link.servicePath
+          ),
+      );
+
+    const collectionEvidence =
+      link.evidence.filter(
+        (item) =>
+          item.path
+            === link.servicePath,
+      );
+
+    addEdge(
+      handlerId,
+      serviceId,
+      "calls_service",
+      handlerEvidence,
+    );
+
+    addEdge(
+      serviceId,
+      collectionId,
+      "accesses_collection",
+      collectionEvidence,
+    );
+  }
+
+  return {
+    nodes:
+      [
+        ...nodes.values(),
+      ],
+    edges:
+      [
+        ...edges.values(),
+      ],
+  };
+}
+
+function processMermaidLabel(
+  value: string,
+): string {
+  return value
+    .replace(
+      /\\/g,
+      "\\\\",
+    )
+    .replace(
+      /"/g,
+      '\"',
+    )
+    .replace(
+      /\r?\n/g,
+      " ",
+    );
+}
+
+function processEdgeLabel(
+  kind: ProcessGraphEdgeKind,
+): string {
+  switch (kind) {
+    case "calls_api":
+      return "calls API";
+
+    case "handled_by":
+      return "handled by";
+
+    case "calls_service":
+      return "calls";
+
+    case "accesses_collection":
+      return "accesses";
+  }
+}
+
+function processNodeLabel(
+  node: ProcessGraphNode,
+): string {
+  switch (node.kind) {
+    case "ui_source":
+      return `UI: ${node.label}`;
+
+    case "api_route":
+      return `API: ${node.label}`;
+
+    case "handler":
+      return `Handler: ${node.label}`;
+
+    case "service_function":
+      return `Service: ${node.label}`;
+
+    case "db_collection":
+      return `DB: ${node.label}`;
+  }
+}
+
+export function renderProcessGraphMermaid(
+  graph: ProcessGraph,
+): string {
+  const lines:
+    string[] = [
+      "flowchart LR",
+    ];
+
+  const mermaidIds =
+    new Map<
+      string,
+      string
+    >();
+
+  graph.nodes.forEach(
+    (
+      node,
+      index,
+    ) => {
+      const id =
+        `n${index + 1}`;
+
+      mermaidIds.set(
+        node.id,
+        id,
+      );
+
+      lines.push(
+        `  ${id}["${processMermaidLabel(
+          processNodeLabel(
+            node,
+          ),
+        )}"]`,
+      );
+    },
+  );
+
+  for (
+    const edge
+    of graph.edges
+  ) {
+    const from =
+      mermaidIds.get(
+        edge.from,
+      );
+
+    const to =
+      mermaidIds.get(
+        edge.to,
+      );
+
+    if (
+      !from
+      || !to
+    ) {
+      continue;
+    }
+
+    lines.push(
+      `  ${from} -->|${processEdgeLabel(
+        edge.kind,
+      )}| ${to}`,
+    );
+  }
+
+  return lines.join(
+    "\n",
+  );
+}
