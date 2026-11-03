@@ -84,6 +84,12 @@ const suites:
     },
     {
       label:
+        "Page render server binding",
+      script:
+        "test:page-render-server",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",

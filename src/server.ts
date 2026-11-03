@@ -45,6 +45,14 @@ import { registerIssueLookupTools } from "./issue-lookup.js";
 import { registerDbTools } from "./db.js";
 import { registerDbImpactTools } from "./db-impact.js";
 import { registerDbMermaidTools } from "./db-mermaid.js";
+import {
+  pageRenderServerBindingFromEnv,
+  pageRenderTargetAccessForRequest,
+} from "./page-render-server.js";
+
+import {
+  registerPageRenderTools,
+} from "./page-render-tool.js";
 
 function registerOptionalProfileTools(
   server: McpServer,
@@ -91,6 +99,11 @@ function registerOptionalProfileTools(
 
 const serverRuntime =
   loadServerRuntimeFromEnv();
+
+const pageRenderBinding =
+  pageRenderServerBindingFromEnv(
+    serverRuntime.mode,
+  );
 
 const handler = createMcpHandler((ctx) => {
   const {
@@ -199,6 +212,23 @@ GENERAL
     server,
     repositoryAccess,
   );
+
+  const pageRenderTargetAccess =
+    pageRenderTargetAccessForRequest(
+      pageRenderBinding,
+      legacyRepository,
+    );
+
+  if (
+    pageRenderTargetAccess
+  ) {
+    registerPageRenderTools(
+      server,
+      repositoryAccess,
+      pageRenderTargetAccess,
+    );
+  }
+
   if (legacyRepository) {
     registerOptionalProfileTools(
       server,

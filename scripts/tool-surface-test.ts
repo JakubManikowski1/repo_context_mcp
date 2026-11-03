@@ -57,6 +57,8 @@ async function listTools(
   port: number,
   privateKeyPath: string,
   features?: string,
+  extraEnv:
+    NodeJS.ProcessEnv = {},
 ): Promise<string[]> {
   const child = spawn(
     process.execPath,
@@ -73,6 +75,15 @@ async function listTools(
 
         REPO_CONTEXT_FEATURES:
           features ?? "",
+
+        REPO_CONTEXT_RENDER_ORIGIN:
+          "",
+
+        REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+          "",
+
+        REPO_CONTEXT_RENDER_REPOSITORY_ID:
+          "",
 
         GITHUB_APP_ID:
           "123456",
@@ -91,6 +102,8 @@ async function listTools(
 
         GITHUB_PRIVATE_KEY_PATH:
           privateKeyPath,
+
+        ...extraEnv,
       },
       stdio: "ignore",
     },
@@ -194,6 +207,29 @@ async function main() {
       full,
       FULL_TOOLS,
       "full",
+    );
+
+    const renderEnabled =
+      await listTools(
+        3112,
+        privateKeyPath,
+        undefined,
+        {
+          REPO_CONTEXT_RENDER_ORIGIN:
+            "http://127.0.0.1:5173",
+
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+        },
+      );
+
+    assertEqual(
+      renderEnabled,
+      [
+        ...CORE_TOOLS,
+        "page_render",
+      ].sort(),
+      "render-enabled",
     );
 
     console.log(
