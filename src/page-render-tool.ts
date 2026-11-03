@@ -160,6 +160,12 @@ export function registerPageRenderTools(
                 1,
               ),
         }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     async (
       input,

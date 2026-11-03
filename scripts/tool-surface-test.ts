@@ -19,6 +19,11 @@ const CORE_TOOLS = [
   "repositories_list",
 ];
 
+let lastListedTools:
+  Awaited<
+    ReturnType<Client["listTools"]>
+  >["tools"] = [];
+
 const FULL_TOOLS = [
   ...CORE_TOOLS,
   "db_context",
@@ -126,6 +131,9 @@ async function listTools(
     try {
       const result = await client.listTools();
 
+      lastListedTools =
+        result.tools;
+
       return result.tools
         .map((tool) => tool.name)
         .sort();
@@ -213,7 +221,7 @@ async function main() {
       await listTools(
         3112,
         privateKeyPath,
-        undefined,
+        "ui",
         {
           REPO_CONTEXT_RENDER_ORIGIN:
             "http://127.0.0.1:5173",
@@ -228,9 +236,54 @@ async function main() {
       [
         ...CORE_TOOLS,
         "page_render",
+        "ui_context",
+        "ui_flow",
+        "ui_inventory",
       ].sort(),
       "render-enabled",
     );
+
+    for (
+      const toolName
+      of [
+        "page_render",
+        "ui_context",
+        "ui_inventory",
+        "ui_flow",
+      ]
+    ) {
+      const tool =
+        lastListedTools.find(
+          (candidate) =>
+            candidate.name
+              === toolName,
+        );
+
+      if (!tool) {
+        throw new Error(
+          `${toolName} missing from tool metadata`,
+        );
+      }
+
+      if (
+        tool.annotations
+          ?.readOnlyHint
+          !== true
+        || tool.annotations
+          ?.destructiveHint
+          !== false
+        || tool.annotations
+          ?.idempotentHint
+          !== true
+        || tool.annotations
+          ?.openWorldHint
+          !== true
+      ) {
+        throw new Error(
+          `${toolName} read-only annotations mismatch`,
+        );
+      }
+    }
 
     console.log(
       "Tool surface: OK",

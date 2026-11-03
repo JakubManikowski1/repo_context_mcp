@@ -119,6 +119,12 @@ export function registerUiTools(server: McpServer) {
         keywords: z.array(z.string().min(1)).max(8).optional(),
         maxFiles: z.number().int().min(1).max(30).optional(),
       }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     async ({ route, keywords = [], maxFiles = 15 }) => {
       const octokit = getOctokit();
