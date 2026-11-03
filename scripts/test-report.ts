@@ -114,6 +114,12 @@ const suites:
     },
     {
       label:
+        "Static repository registry",
+      script:
+        "test:static-registry",
+    },
+    {
+      label:
         "MCP tool isolation",
       script:
         "test:isolation",
