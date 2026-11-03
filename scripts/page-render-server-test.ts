@@ -1,5 +1,19 @@
 import assert from "node:assert/strict";
 
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+
+import {
+  tmpdir,
+} from "node:os";
+
+import {
+  join,
+} from "node:path";
+
 import type {
   RepositoryContext,
 } from "../src/repository-context.js";
@@ -8,6 +22,7 @@ import {
   PageRenderServerConfigError,
   pageRenderServerBindingFromEnv,
   pageRenderTargetAccessForRequest,
+  staticPageRenderExecutionToolRendererFromEnv,
 } from "../src/page-render-server.js";
 
 const renderEnv = {
@@ -221,6 +236,183 @@ serverErrorCode(
     ),
   "render_server_legacy_repository_missing",
 );
+
+const temporaryDirectory =
+  mkdtempSync(
+    join(
+      tmpdir(),
+      "repo-context-render-server-",
+    ),
+  );
+
+try {
+  const profilesFile =
+    join(
+      temporaryDirectory,
+      "render-profiles.json",
+    );
+
+  writeFileSync(
+    profilesFile,
+    JSON.stringify({
+      version: 1,
+      profiles: [
+        {
+          repositoryId:
+            "lf",
+          strategy:
+            "local-workspace",
+          workspace:
+            temporaryDirectory,
+          cwd:
+            ".",
+          command:
+            process.execPath,
+          args: [
+            "server.mjs",
+            "{host}",
+            "{port}",
+          ],
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  const definitions = [
+    {
+      id:
+        "lf",
+      installationId:
+        111111,
+      owner:
+        "example-org",
+      repo:
+        "application",
+      branch:
+        "main",
+    },
+  ];
+
+  assert.equal(
+    staticPageRenderExecutionToolRendererFromEnv(
+      definitions,
+      {},
+    ),
+    null,
+  );
+
+  assert.ok(
+    staticPageRenderExecutionToolRendererFromEnv(
+      definitions,
+      {
+        REPO_CONTEXT_RENDER_PROFILES_FILE:
+          profilesFile,
+        REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+          process.execPath,
+      },
+    ),
+  );
+
+  serverErrorCode(
+    () =>
+      staticPageRenderExecutionToolRendererFromEnv(
+        null,
+        {
+          REPO_CONTEXT_RENDER_PROFILES_FILE:
+            profilesFile,
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+        },
+      ),
+    "render_server_execution_registry_required",
+  );
+
+  serverErrorCode(
+    () =>
+      staticPageRenderExecutionToolRendererFromEnv(
+        definitions,
+        {
+          REPO_CONTEXT_RENDER_PROFILES_FILE:
+            profilesFile,
+        },
+      ),
+    "render_server_execution_browser_required",
+  );
+
+  serverErrorCode(
+    () =>
+      staticPageRenderExecutionToolRendererFromEnv(
+        definitions,
+        {
+          REPO_CONTEXT_RENDER_PROFILES_FILE:
+            profilesFile,
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+          REPO_CONTEXT_RENDER_ORIGIN:
+            "http://127.0.0.1:5173",
+        },
+      ),
+    "render_server_execution_configuration_conflict",
+  );
+
+  const unknownProfilesFile =
+    join(
+      temporaryDirectory,
+      "unknown-render-profiles.json",
+    );
+
+  writeFileSync(
+    unknownProfilesFile,
+    JSON.stringify({
+      version: 1,
+      profiles: [
+        {
+          repositoryId:
+            "unknown",
+          strategy:
+            "local-workspace",
+          workspace:
+            temporaryDirectory,
+          cwd:
+            ".",
+          command:
+            process.execPath,
+          args: [
+            "server.mjs",
+            "{host}",
+            "{port}",
+          ],
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  serverErrorCode(
+    () =>
+      staticPageRenderExecutionToolRendererFromEnv(
+        definitions,
+        {
+          REPO_CONTEXT_RENDER_PROFILES_FILE:
+            unknownProfilesFile,
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+        },
+      ),
+    "render_server_execution_repository_unknown",
+  );
+} finally {
+  rmSync(
+    temporaryDirectory,
+    {
+      recursive:
+        true,
+      force:
+        true,
+    },
+  );
+}
 
 console.log(
   "Page render server binding: OK",

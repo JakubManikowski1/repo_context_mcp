@@ -228,6 +228,19 @@ export function loadStaticRepositoryRegistry(
   );
 }
 
+export function staticRepositoryKey(
+  definition:
+    StaticRepositoryDefinition,
+): string {
+  return [
+    "static",
+    definition.id,
+    definition.installationId,
+    `${definition.owner}/${definition.repo}`,
+    definition.branch,
+  ].join(":");
+}
+
 export function createStaticRepositoryRegistrations(
   definitions:
     readonly StaticRepositoryDefinition[],
@@ -248,13 +261,9 @@ export function createStaticRepositoryRegistrations(
           "github",
 
         key:
-          [
-            "static",
-            definition.id,
-            definition.installationId,
-            `${definition.owner}/${definition.repo}`,
-            definition.branch,
-          ].join(":"),
+          staticRepositoryKey(
+            definition,
+          ),
 
         owner:
           definition.owner,
