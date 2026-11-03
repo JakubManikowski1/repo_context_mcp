@@ -19,6 +19,7 @@ import type {
 
 import {
   PageRenderExecutionSessionError,
+  pageRenderExecutionEnvironment,
   startPageRenderExecutionSession,
   withPageRenderExecutionSession,
 } from "../src/page-render-execution-session.js";
@@ -33,6 +34,40 @@ function sessionErrorCode(
       instanceof PageRenderExecutionSessionError
     && error.code === code;
 }
+
+const sanitizedEnvironment =
+  pageRenderExecutionEnvironment({
+    PATH:
+      "/safe/bin",
+    TMPDIR:
+      "/safe/tmp",
+    LANG:
+      "en_US.UTF-8",
+    HOME:
+      "/Users/example",
+    NODE_OPTIONS:
+      "--require /tmp/should-not-load.js",
+    GITHUB_PRIVATE_KEY:
+      "secret",
+    CONTROL_PLANE_API_KEY:
+      "secret",
+    REPO_CONTEXT_REPOSITORIES_FILE:
+      "secret-ish",
+    NPM_TOKEN:
+      "secret",
+  });
+
+assert.deepEqual(
+  sanitizedEnvironment,
+  {
+    PATH:
+      "/safe/bin",
+    TMPDIR:
+      "/safe/tmp",
+    LANG:
+      "en_US.UTF-8",
+  },
+);
 
 async function assertOriginStopped(
   origin: string,
@@ -50,6 +85,19 @@ async function assertOriginStopped(
       ),
   );
 }
+
+const secretEnvName =
+  "REPO_CONTEXT_RENDER_TEST_SECRET";
+
+const previousSecretValue =
+  process.env[
+    secretEnvName
+  ];
+
+process.env[
+  secretEnvName
+] =
+  "must-not-leak";
 
 const temporaryRoot =
   mkdtempSync(
@@ -92,7 +140,9 @@ try {
       "  (_request, response) => {",
       "    response.statusCode = 200;",
       '    response.setHeader("content-type", "text/plain");',
-      '    response.end("ready");',
+      '    response.end(',
+      '      process.env.REPO_CONTEXT_RENDER_TEST_SECRET ?? "ready",',
+      "    );",
       "  },",
       ");",
       "",
@@ -333,6 +383,20 @@ try {
     "Page render execution sessions: OK",
   );
 } finally {
+  if (
+    previousSecretValue
+    === undefined
+  ) {
+    delete process.env[
+      secretEnvName
+    ];
+  } else {
+    process.env[
+      secretEnvName
+    ] =
+      previousSecretValue;
+  }
+
   rmSync(
     temporaryRoot,
     {

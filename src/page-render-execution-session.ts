@@ -45,6 +45,48 @@ const STOP_GRACE_MS =
 const KILL_GRACE_MS =
   1_000;
 
+const PAGE_RENDER_EXECUTION_ENV_KEYS =
+  [
+    "PATH",
+    "PATHEXT",
+    "SystemRoot",
+    "WINDIR",
+    "ComSpec",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+  ] as const;
+
+export function pageRenderExecutionEnvironment(
+  env:
+    NodeJS.ProcessEnv =
+      process.env,
+):
+  NodeJS.ProcessEnv {
+  const childEnv:
+    NodeJS.ProcessEnv = {};
+
+  for (
+    const key
+    of PAGE_RENDER_EXECUTION_ENV_KEYS
+  ) {
+    const value =
+      env[key];
+
+    if (
+      value !== undefined
+    ) {
+      childEnv[key] =
+        value;
+    }
+  }
+
+  return childEnv;
+}
+
 export type PageRenderExecutionSessionErrorCode =
   | "render_execution_repository_key_invalid"
   | "render_execution_workspace_unavailable"
@@ -743,7 +785,7 @@ export async function startPageRenderExecutionSession(
             "ignore",
 
           env:
-            process.env,
+            pageRenderExecutionEnvironment(),
         },
       );
   } catch {
