@@ -581,3 +581,125 @@ OAuth identity verification and a fresh TOTP step-up.
 Apache License 2.0.
 
 See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## Roadmap
+
+**Current focus: Phase 1 — Multi-repository context.**
+
+The project is evolving from a single-repository, read-only context server into a repository-aware development and review assistant.
+
+The roadmap is intentionally incremental. Each phase should remain useful on its own and should avoid introducing infrastructure that is not yet required by the active use case.
+
+### Phase 1 — Multi-repository context
+
+Run a single MCP server behind a single endpoint and allow the client to choose which configured repository a tool call should operate on.
+
+Goals:
+
+- support multiple repositories from one MCP instance,
+- expose available repositories through `repositories_list`,
+- use an opaque `repository_id` consistently across all repository-bound tools,
+- keep repository selection request-scoped rather than storing global mutable active-repository state,
+- preserve repository isolation in caches, budgets, and request context,
+- support repository-specific optional capabilities such as page-render targets,
+- retain simple single-user operation during this phase.
+
+The intended interaction is:
+
+```text
+ChatGPT
+    ↓
+one Repo Context MCP
+    ↓
+repository selection
+    ├── repository A
+    ├── repository B
+    └── repository C
+```
+
+Separate MCP deployments per repository are considered a transitional configuration rather than the target architecture.
+
+### Phase 2 — Interactive ChatGPT views
+
+Once repository selection is stable, improve the user experience with interactive views inside ChatGPT.
+
+Goals:
+
+- provide a repository picker,
+- expose repository and route context visually where useful,
+- integrate static UI analysis with runtime page rendering,
+- make UI review workflows usable by non-developers,
+- keep text and tool interfaces available as a fallback when rich UI is unavailable.
+
+The UI must remain a client convenience. Repository authorization and tool behavior must never depend solely on client-side state.
+
+### Phase 3 — Bounded GitHub write operations
+
+After the read and review workflow is mature, introduce narrowly scoped write capabilities.
+
+The first planned write workflow is GitHub issue creation.
+
+Goals:
+
+- create issues from repository or UI review context,
+- include evidence such as relevant routes, files, and analysis summaries,
+- require an explicit target repository,
+- clearly distinguish read-only tools from write tools,
+- mark MCP tool annotations accurately,
+- keep write operations narrow and auditable rather than adding generic repository mutation.
+
+Source-code modification is not part of this phase.
+
+### Phase 4 — Multi-user authentication and authorization
+
+Authentication and fine-grained repository authorization are deliberately deferred until the repository-selection, UI, and review workflows are established.
+
+The target model separates:
+
+```text
+RepositoryConnection
+    = how the service technically accesses a repository
+
+RepositoryAccess
+    = who is allowed to use that connection and with what role
+```
+
+Goals:
+
+- authenticate each MCP user,
+- identify users through a stable external identity rather than GitHub account ownership,
+- allow users without GitHub accounts to receive repository access,
+- authorize every repository-bound request independently,
+- support grants and revocation,
+- support repository-specific roles such as viewer, reviewer, and administrator,
+- ensure knowledge of a `repository_id` never grants access by itself,
+- keep provider credentials and repository connection details server-side.
+
+This phase should make the MCP suitable for broader multi-user deployment without changing the repository-facing workflow introduced in earlier phases.
+
+### Planned sequencing
+
+```text
+multi-repository selection
+        ↓
+interactive ChatGPT views
+        ↓
+bounded GitHub issue creation
+        ↓
+multi-user authentication and authorization
+```
+
+This order is intentional. The immediate goal is to validate repository and UI workflows with a minimal operational model before adding multi-user identity and access-management complexity.
+
+### Design principles
+
+Across all phases:
+
+- prefer one MCP service over repository-specific MCP deployments,
+- keep repository choice explicit and request-scoped,
+- fail closed when repository access cannot be established,
+- treat UI state as convenience rather than authorization,
+- keep read and write capabilities clearly separated,
+- add write operations individually rather than introducing generic mutation,
+- preserve compatibility with simple local and private deployments where practical,
+- avoid coupling repository access to a user's personal GitHub account unless the deployment explicitly requires it.
