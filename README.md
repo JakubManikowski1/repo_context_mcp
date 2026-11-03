@@ -42,7 +42,55 @@ Example:
 REPO_CONTEXT_FEATURES=db,ui,history,workflow
 ```
 
-If the variable is empty or omitted, only the core tools are exposed.
+If the variable is empty or omitted, the optional capability profiles are not exposed.
+The core tools remain available. `page_render` is configured separately and is not part
+of `REPO_CONTEXT_FEATURES`.
+
+### Optional page rendering
+
+`page_render` renders a route from an explicitly configured, already-running application.
+It is separate from the static `ui` profile and can be enabled in either legacy or OAuth
+mode.
+
+Page rendering is disabled unless both of these values are configured:
+
+```env
+REPO_CONTEXT_RENDER_ORIGIN=http://127.0.0.1:5173
+REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE=/absolute/path/to/chromium-compatible-browser
+```
+
+`REPO_CONTEXT_RENDER_ORIGIN` must be an exact HTTP(S) origin containing only the scheme,
+host, and optional port.
+
+The browser executable must already exist. Repo Context MCP does not discover, download,
+or install a browser, and it does not install dependencies or start the target
+application.
+
+In legacy mode, the render target is bound to the configured legacy repository. Do not
+set `REPO_CONTEXT_RENDER_REPOSITORY_ID`.
+
+In OAuth mode, rendering must additionally be bound to exactly one repository connection:
+
+```env
+REPO_CONTEXT_RENDER_REPOSITORY_ID=connection-id
+```
+
+The binding is connection-scoped. A principal must still be authorized for the requested
+repository through normal `RepositoryToolAccess`; knowing a repository connection ID is
+not sufficient authorization.
+
+The renderer uses a fresh browser context and:
+
+- renders only application-local routes below the configured origin,
+- blocks cross-origin HTTP(S) resource requests,
+- blocks cross-origin WebSocket connections,
+- blocks top-level navigation away from the configured origin,
+- disables downloads and service workers,
+- bounds extracted text, visible interactive elements, and screenshot size,
+- always closes the browser after the render.
+
+`page_render` returns structured rendered-page metadata as text and, when within the
+configured size limit, a JPEG screenshot as separate MCP image content.
 
 ## Design goals
 
@@ -453,7 +501,12 @@ It can:
 
 This profile analyzes repository UI code.
 
-It does **not** currently render interactive MCP App UI inside the chat client.
+Runtime page rendering is intentionally separate from static UI analysis. When
+`page_render` is configured, it can inspect the current rendered state of an
+already-running application and return a bounded screenshot plus rendered DOM context.
+
+This does **not** turn the repository tools into an interactive MCP App UI inside the
+chat client.
 
 ## Workflow profile
 

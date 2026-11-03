@@ -7,15 +7,36 @@ import {
   getRepoTreeIndex,
 } from "./repository-snapshot.js";
 
+import {
+  buildUiGraph,
+  extractUiFlowEvents,
+  extractUiInventoryItems,
+  resolveUiComponentUsages,
+  renderUiGraphMermaid,
+} from "./ui-graph.js";
+
+import type {
+  UiFlowFile,
+} from "./ui-graph.js";
+
+import {
+  resolveExpressRouteTree,
+} from "./backend-graph.js";
+
+import type {
+  BackendSourceFile,
+} from "./backend-graph.js";
+
+import {
+  buildProcessGraph,
+  collectBackendDbDependencyPaths,
+  linkBackendRoutesToDirectDbCollections,
+  matchUiApiCallsToBackend,
+  renderProcessGraphMermaid,
+} from "./process-graph.js";
+
 const EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"];
 const MAX_FILE_BYTES = 250_000;
-
-type FlowEvent = {
-  type: string;
-  line: number;
-  target?: string;
-  text?: string;
-};
 
 function normalizeRoute(route: string): string {
   if (route.trim() === "/") return "/";
@@ -74,137 +95,12 @@ async function readFile(path: string, head: string): Promise<string | null> {
   ).toString("utf8");
 }
 
-function clean(value?: string): string | undefined {
-  if (!value) return undefined;
-
-  const result = value
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 300);
-
-  return result || undefined;
-}
-
-function extractFlowEvents(content: string): FlowEvent[] {
-  const lines = content.split(/\r?\n/);
-  const events: FlowEvent[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNo = i + 1;
-
-    const href =
-      line.match(/\bhref\s*=\s*["'`]([^"'`]+)["'`]/)?.[1];
-
-    if (href) {
-      events.push({
-        type: "navigation",
-        line: lineNo,
-        target: href,
-      });
-    }
-
-    const routerPush =
-      line.match(
-        /\b(?:router\.(?:push|replace)|navigate)\s*\(\s*["'`]([^"'`]+)["'`]/,
-      )?.[1];
-
-    if (routerPush) {
-      events.push({
-        type: "navigation",
-        line: lineNo,
-        target: routerPush,
-      });
-    }
-
-    const apiCall =
-      line.match(
-        /\b(?:fetch|axios\.(?:get|post|put|patch|delete))\s*\(\s*["'`]([^"'`]+)["'`]/,
-      )?.[1];
-
-    if (apiCall) {
-      events.push({
-        type: "api_call",
-        line: lineNo,
-        target: apiCall,
-      });
-    }
-
-    if (/\bonSubmit\s*=|handleSubmit\s*\(/.test(line)) {
-      events.push({
-        type: "form_submit",
-        line: lineNo,
-      });
-    }
-
-    if (/\bonClick\s*=/.test(line)) {
-      events.push({
-        type: "click_action",
-        line: lineNo,
-        text: clean(
-          line.match(/>([^<>]{1,120})</)?.[1],
-        ),
-      });
-    }
-
-    if (
-      /\b(Dialog|Modal|Drawer|Sheet|Popover)\b/.test(line)
-    ) {
-      events.push({
-        type: "overlay",
-        line: lineNo,
-      });
-    }
-
-    if (
-      /\b(disabled|isDisabled|canSubmit|canProceed|hasPermission|isAllowed)\b/.test(
-        line,
-      )
-    ) {
-      events.push({
-        type: "guard",
-        line: lineNo,
-        text: clean(line),
-      });
-    }
-
-    if (
-      /\b(isLoading|loading|Loading|Spinner|Skeleton)\b/.test(line)
-    ) {
-      events.push({
-        type: "loading_state",
-        line: lineNo,
-      });
-    }
-
-    if (
-      /\b(isError|errorMessage|toast\.error|setError|Error)\b/.test(line)
-    ) {
-      events.push({
-        type: "error_state",
-        line: lineNo,
-      });
-    }
-
-    if (
-      /\b(empty|Empty|noData|NoData|length\s*===\s*0)\b/.test(line)
-    ) {
-      events.push({
-        type: "empty_state",
-        line: lineNo,
-      });
-    }
-  }
-
-  return events;
-}
-
 export function registerUiFlowTools(server: McpServer) {
   server.registerTool(
     "ui_flow",
     {
       description:
-        "PRIMARY UI FLOW TOOL after ui_context. Analyze the user flow for a route. Finds navigation, clicks, form submissions, overlays, guards, API calls and loading/error/empty states across relevant frontend files. Use this when planning UX changes across multiple screens or interactions.",
+        "PRIMARY UI FLOW TOOL after ui_context. Analyze the user flow for a route. Finds navigation, clicks, form submissions, overlays, guards, API calls and loading/error/empty states across relevant frontend files. Also returns an evidence-backed cross-layer process graph when matching backend routes and direct database access can be resolved. Use this when planning UX changes across multiple screens or interactions.",
       inputSchema: z.object({
         route: z.string().min(1),
         keywords: z.array(z.string().min(1)).max(8).optional(),
@@ -301,22 +197,287 @@ export function registerUiFlowTools(server: McpServer) {
 
           return {
             path,
-            events: extractFlowEvents(content),
+            events: extractUiFlowEvents(
+              content,
+            ),
+            components:
+              resolveUiComponentUsages(
+                path,
+                content,
+                treeIndex.paths,
+              ),
+            inventory:
+              extractUiInventoryItems(
+                content,
+              ),
           };
         }),
       );
 
-      const summary: Record<string, number> = {};
+      const graphFiles:
+        UiFlowFile[] =
+        files.flatMap(
+          (file) => {
+            if (
+              !("events" in file)
+              || !Array.isArray(
+                file.events,
+              )
+            ) {
+              return [];
+            }
 
-      for (const file of files) {
-        if (!("events" in file) || !Array.isArray(file.events)) {
-          continue;
-        }
+            return [
+              {
+                path:
+                  file.path,
+                events:
+                  file.events,
+                components:
+                  "components" in file
+                  && Array.isArray(
+                    file.components,
+                  )
+                    ? file.components
+                    : [],
+                inventory:
+                  "inventory" in file
+                  && Array.isArray(
+                    file.inventory,
+                  )
+                    ? file.inventory
+                    : [],
+              },
+            ];
+          },
+        );
 
-        for (const event of file.events) {
-          summary[event.type] = (summary[event.type] ?? 0) + 1;
+      const summary:
+        Record<
+          string,
+          number
+        > = {};
+
+      for (
+        const file
+        of graphFiles
+      ) {
+        for (
+          const event
+          of file.events
+        ) {
+          summary[
+            event.type
+          ] =
+            (
+              summary[
+                event.type
+              ]
+              ?? 0
+            )
+            + 1;
         }
       }
+
+      const graph =
+        buildUiGraph(
+          normalizedRoute,
+          graphFiles,
+        );
+
+      const mermaid =
+        renderUiGraphMermaid(
+          graph,
+        );
+
+
+      const backendEntryPaths =
+        [
+          "apps/api/src/app.js",
+          "apps/api/src/app.ts",
+        ].filter(
+          (path) =>
+            snapshotPaths.has(
+              path,
+            ),
+        );
+
+      const backendRoutePaths =
+        treeIndex.paths.filter(
+          (path) =>
+            isSourceFile(
+              path,
+            )
+            && (
+              backendEntryPaths.includes(
+                path,
+              )
+              || path.startsWith(
+                "apps/api/src/routes/",
+              )
+            ),
+        );
+
+      const backendRouteReadResults =
+        await Promise.all(
+          backendRoutePaths.map(
+            async (
+              path,
+            ) => {
+              const content =
+                await readFile(
+                  path,
+                  currentHead,
+                );
+
+              if (!content) {
+                return undefined;
+              }
+
+              return {
+                path,
+                content,
+              };
+            },
+          ),
+        );
+
+      const backendRouteFiles:
+        BackendSourceFile[] =
+        backendRouteReadResults.flatMap(
+          (file) =>
+            file
+              ? [
+                  file,
+                ]
+              : [],
+        );
+
+      const backendRoutes =
+        backendEntryPaths.length
+          > 0
+          ? resolveExpressRouteTree(
+              backendRouteFiles,
+              treeIndex.paths,
+              backendEntryPaths,
+            )
+          : [];
+
+      const uiBackendLinks =
+        matchUiApiCallsToBackend(
+          graphFiles,
+          backendRoutes,
+        );
+
+      const matchedBackendRoutes =
+        [
+          ...new Map(
+            uiBackendLinks.map(
+              (link) => [
+                [
+                  link.backend.method,
+                  link.backend.fullPath,
+                  link.backend.sourcePath,
+                  link.backend.line,
+                ].join(
+                  "|",
+                ),
+                link.backend,
+              ],
+            ),
+          ).values(),
+        ];
+
+      const backendDependencyFiles =
+        new Map<
+          string,
+          BackendSourceFile
+        >();
+
+      for (
+        let round = 0;
+        round < 3;
+        round++
+      ) {
+        const neededPaths =
+          collectBackendDbDependencyPaths(
+            matchedBackendRoutes,
+            [
+              ...backendDependencyFiles.values(),
+            ],
+            treeIndex.paths,
+          ).filter(
+            (path) =>
+              !backendDependencyFiles.has(
+                path,
+              ),
+          );
+
+        if (
+          neededPaths.length
+            === 0
+        ) {
+          break;
+        }
+
+        const loaded =
+          await Promise.all(
+            neededPaths.map(
+              async (
+                path,
+              ) => {
+                const content =
+                  await readFile(
+                    path,
+                    currentHead,
+                  );
+
+                if (!content) {
+                  return undefined;
+                }
+
+                return {
+                  path,
+                  content,
+                };
+              },
+            ),
+          );
+
+        for (
+          const file
+          of loaded
+        ) {
+          if (!file) {
+            continue;
+          }
+
+          backendDependencyFiles.set(
+            file.path,
+            file,
+          );
+        }
+      }
+
+      const backendDbLinks =
+        linkBackendRoutesToDirectDbCollections(
+          matchedBackendRoutes,
+          [
+            ...backendDependencyFiles.values(),
+          ],
+          treeIndex.paths,
+        );
+
+      const processGraph =
+        buildProcessGraph(
+          uiBackendLinks,
+          backendDbLinks,
+        );
+
+      const processMermaid =
+        renderProcessGraphMermaid(
+          processGraph,
+        );
 
       return {
         content: [
@@ -330,6 +491,10 @@ export function registerUiFlowTools(server: McpServer) {
                 route: normalizedRoute,
                 summary,
                 files,
+                graph,
+                mermaid,
+                processGraph,
+                processMermaid,
               },
               null,
               2,

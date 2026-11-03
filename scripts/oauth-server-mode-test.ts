@@ -456,6 +456,15 @@ async function main(): Promise<void> {
               "base64",
             ),
 
+          REPO_CONTEXT_RENDER_ORIGIN:
+            "http://127.0.0.1:9",
+
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+
+          REPO_CONTEXT_RENDER_REPOSITORY_ID:
+            "conn_a",
+
           // Deliberately remove the legacy repository.
           GITHUB_OWNER: "",
           GITHUB_REPO: "",
@@ -592,6 +601,17 @@ async function main(): Promise<void> {
         tokenA,
       );
 
+    const toolsA =
+      await clientA.listTools();
+
+    assert.ok(
+      toolsA.tools.some(
+        (tool) =>
+          tool.name
+            === "page_render",
+      ),
+    );
+
     const listA =
       await clientA.callTool({
         name:
@@ -658,6 +678,28 @@ async function main(): Promise<void> {
       },
     );
 
+    await expectDenied(
+      clientB,
+      "page_render",
+      {
+        repositoryId:
+          "conn_a",
+        route:
+          "/",
+      },
+    );
+
+    await expectDenied(
+      clientB,
+      "page_render",
+      {
+        repositoryId:
+          "conn_b",
+        route:
+          "/",
+      },
+    );
+
     console.log(
       "OAuth production-mode activation: OK",
     );
@@ -680,6 +722,18 @@ async function main(): Promise<void> {
 
     console.log(
       "Cross-user repository_id rejected end-to-end: OK",
+    );
+
+    console.log(
+      "Repository-bound page_render visible in OAuth mode: OK",
+    );
+
+    console.log(
+      "Cross-user page_render rejected end-to-end: OK",
+    );
+
+    console.log(
+      "Non-target repository page_render rejected: OK",
     );
 
     console.log(

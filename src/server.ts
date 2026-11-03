@@ -45,6 +45,14 @@ import { registerIssueLookupTools } from "./issue-lookup.js";
 import { registerDbTools } from "./db.js";
 import { registerDbImpactTools } from "./db-impact.js";
 import { registerDbMermaidTools } from "./db-mermaid.js";
+import {
+  pageRenderServerBindingFromEnv,
+  pageRenderTargetAccessForRequest,
+} from "./page-render-server.js";
+
+import {
+  registerPageRenderTools,
+} from "./page-render-tool.js";
 
 function registerOptionalProfileTools(
   server: McpServer,
@@ -91,6 +99,11 @@ function registerOptionalProfileTools(
 
 const serverRuntime =
   loadServerRuntimeFromEnv();
+
+const pageRenderBinding =
+  pageRenderServerBindingFromEnv(
+    serverRuntime.mode,
+  );
 
 const handler = createMcpHandler((ctx) => {
   const {
@@ -143,6 +156,13 @@ WORKFLOW
 - Use repo_commands only when the task depends on project-specific test, build, migration, deployment, or development commands.
 - Do not call workflow tools routinely or "just in case".
 - Prefer repo_code alone when the requested task can be answered from code context.
+
+PAGE RENDERING
+- page_render may be exposed when an explicit repository-bound render target is configured.
+- Use page_render only when current rendered application state materially helps the task.
+- Keep runtime rendering separate from static repository analysis: ui_flow describes source-backed UI/process structure, while page_render describes the current running page.
+- page_render never installs dependencies, starts the target application, or installs a browser.
+- Do not infer that a render target exists when page_render is absent.
 
 PERFORMANCE
 - A normal repository task should use 1-2 MCP calls total.
@@ -199,6 +219,23 @@ GENERAL
     server,
     repositoryAccess,
   );
+
+  const pageRenderTargetAccess =
+    pageRenderTargetAccessForRequest(
+      pageRenderBinding,
+      legacyRepository,
+    );
+
+  if (
+    pageRenderTargetAccess
+  ) {
+    registerPageRenderTools(
+      server,
+      repositoryAccess,
+      pageRenderTargetAccess,
+    );
+  }
+
   if (legacyRepository) {
     registerOptionalProfileTools(
       server,

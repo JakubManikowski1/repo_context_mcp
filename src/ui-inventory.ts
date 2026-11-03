@@ -7,6 +7,10 @@ import {
   getRepoTreeIndex,
 } from "./repository-snapshot.js";
 
+import {
+  extractUiInventoryItems,
+} from "./ui-graph.js";
+
 const SOURCE_EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"];
 const MAX_FILE_BYTES = 250_000;
 
@@ -64,118 +68,6 @@ async function readFile(path: string, head: string): Promise<string | null> {
     response.data.content.replace(/\n/g, ""),
     "base64",
   ).toString("utf8");
-}
-
-type InventoryItem = {
-  type: string;
-  text?: string;
-  line: number;
-};
-
-function cleanText(value: string): string {
-  return value
-    .replace(/\s+/g, " ")
-    .replace(/[{}]/g, "")
-    .trim()
-    .slice(0, 300);
-}
-
-function inventoryFile(content: string): InventoryItem[] {
-  const lines = content.split(/\r?\n/);
-  const items: InventoryItem[] = [];
-
-  const patterns: Array<{
-    type: string;
-    regex: RegExp;
-  }> = [
-    {
-      type: "button",
-      regex: /<(?:button|Button)\b[^>]*>(.*?)<\/(?:button|Button)>/i,
-    },
-    {
-      type: "heading",
-      regex: /<h[1-6]\b[^>]*>(.*?)<\/h[1-6]>/i,
-    },
-    {
-      type: "label",
-      regex: /<label\b[^>]*>(.*?)<\/label>/i,
-    },
-    {
-      type: "link",
-      regex: /<(?:a|Link)\b[^>]*>(.*?)<\/(?:a|Link)>/i,
-    },
-    {
-      type: "placeholder",
-      regex: /placeholder\s*=\s*["'`]([^"'`]+)["'`]/i,
-    },
-    {
-      type: "aria-label",
-      regex: /aria-label\s*=\s*["'`]([^"'`]+)["'`]/i,
-    },
-  ];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    for (const pattern of patterns) {
-      const match = line.match(pattern.regex);
-
-      if (match) {
-        const text = cleanText(match[1] ?? "");
-
-        items.push({
-          type: pattern.type,
-          text: text || undefined,
-          line: i + 1,
-        });
-      }
-    }
-
-    if (
-      /\b(isLoading|loading|Loading|Skeleton|Spinner)\b/.test(line)
-    ) {
-      items.push({
-        type: "loading_state",
-        line: i + 1,
-      });
-    }
-
-    if (
-      /\b(error|Error|isError|errorMessage|toast\.error)\b/.test(line)
-    ) {
-      items.push({
-        type: "error_state",
-        line: i + 1,
-      });
-    }
-
-    if (
-      /\b(empty|Empty|noData|NoData|length\s*===\s*0)\b/.test(line)
-    ) {
-      items.push({
-        type: "empty_state",
-        line: i + 1,
-      });
-    }
-
-    if (
-      /<(?:input|Input|select|Select|textarea|Textarea)\b/i.test(line)
-    ) {
-      items.push({
-        type: "form_control",
-        line: i + 1,
-      });
-    }
-
-    if (/\bonClick\s*=/.test(line)) {
-      items.push({
-        type: "click_action",
-        line: i + 1,
-      });
-    }
-  }
-
-  return items;
 }
 
 export function registerUiInventoryTools(server: McpServer) {
@@ -280,7 +172,10 @@ export function registerUiInventoryTools(server: McpServer) {
 
           return {
             path,
-            inventory: inventoryFile(content),
+            inventory:
+              extractUiInventoryItems(
+                content,
+              ),
           };
         }),
       );

@@ -36,6 +36,60 @@ const suites:
     },
     {
       label:
+        "DB structured graph",
+      script:
+        "test:db-graph",
+    },
+    {
+      label:
+        "UI structured graph",
+      script:
+        "test:ui-graph",
+    },
+    {
+      label:
+        "Backend API graph",
+      script:
+        "test:backend-graph",
+    },
+    {
+      label:
+        "Cross-layer process graph",
+      script:
+        "test:process-graph",
+    },
+    {
+      label:
+        "Page render policy",
+      script:
+        "test:page-render-policy",
+    },
+    {
+      label:
+        "Page renderer",
+      script:
+        "test:page-renderer",
+    },
+    {
+      label:
+        "Page render target access",
+      script:
+        "test:page-render-target",
+    },
+    {
+      label:
+        "Page render MCP tool",
+      script:
+        "test:page-render-tool",
+    },
+    {
+      label:
+        "Page render server binding",
+      script:
+        "test:page-render-server",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",
