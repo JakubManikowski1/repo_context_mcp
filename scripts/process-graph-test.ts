@@ -6,6 +6,7 @@ import type {
 
 import {
   buildProcessGraph,
+  collectBackendDbDependencyPaths,
   linkBackendRoutesToDirectDbCollections,
   matchUiApiCallsToBackend,
   renderProcessGraphMermaid,
@@ -581,6 +582,65 @@ function main() {
     ],
   );
 
+  assert.deepEqual(
+    collectBackendDbDependencyPaths(
+      barrelDbRoutes,
+      [],
+      barrelDbFiles.map(
+        (file) =>
+          file.path,
+      ),
+    ),
+    [
+      "apps/api/src/controllers/pricingController.js",
+    ],
+  );
+
+  assert.deepEqual(
+    collectBackendDbDependencyPaths(
+      barrelDbRoutes,
+      [
+        barrelDbFiles[0],
+      ],
+      barrelDbFiles.map(
+        (file) =>
+          file.path,
+      ),
+    ),
+    [
+      "apps/api/src/services/pocketbaseService.js",
+    ],
+  );
+
+  assert.deepEqual(
+    collectBackendDbDependencyPaths(
+      barrelDbRoutes,
+      [
+        barrelDbFiles[0],
+        barrelDbFiles[1],
+      ],
+      barrelDbFiles.map(
+        (file) =>
+          file.path,
+      ),
+    ),
+    [
+      "apps/api/src/services/pricingService.js",
+    ],
+  );
+
+  assert.deepEqual(
+    collectBackendDbDependencyPaths(
+      barrelDbRoutes,
+      barrelDbFiles,
+      barrelDbFiles.map(
+        (file) =>
+          file.path,
+      ),
+    ),
+    [],
+  );
+
   const unifiedRoute:
     BackendResolvedRoute = {
       method:
@@ -693,6 +753,45 @@ function main() {
       "calls_service",
       "accesses_collection",
     ],
+  );
+
+  const handledByEdge =
+    unifiedGraph.edges.find(
+      (edge) =>
+        edge.kind
+          === "handled_by",
+    );
+
+  assert.deepEqual(
+    handledByEdge
+      ?.evidence,
+    [
+      {
+        path:
+          "apps/api/src/routes/contentRoutes.js",
+        line:
+          12,
+      },
+      {
+        path:
+          "apps/api/src/routes/contentRoutes.js",
+        line:
+          2,
+      },
+    ],
+  );
+
+  const unifiedHandlerNode =
+    unifiedGraph.nodes.find(
+      (node) =>
+        node.kind
+          === "handler",
+    );
+
+  assert.equal(
+    unifiedHandlerNode
+      ?.line,
+    undefined,
   );
 
   const handlerServiceEdge =

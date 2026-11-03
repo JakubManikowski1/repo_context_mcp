@@ -1075,6 +1075,159 @@ function addDbEvidence(
   );
 }
 
+export function collectBackendDbDependencyPaths(
+  routes:
+    readonly BackendResolvedRoute[],
+  files:
+    readonly BackendSourceFile[],
+  repositoryPaths:
+    readonly string[],
+): string[] {
+  const filesByPath =
+    new Map(
+      files.map(
+        (file) => [
+          file.path,
+          file.content,
+        ],
+      ),
+    );
+
+  const snapshotPaths =
+    new Set(
+      repositoryPaths,
+    );
+
+  const needed =
+    new Set<string>();
+
+  for (
+    const route
+    of routes
+  ) {
+    if (
+      !route.handler
+      || !route.handlerImportedFrom
+    ) {
+      continue;
+    }
+
+    const controllerPath =
+      route.handlerImportedFrom;
+
+    if (
+      !filesByPath.has(
+        controllerPath,
+      )
+    ) {
+      if (
+        snapshotPaths.has(
+          controllerPath,
+        )
+      ) {
+        needed.add(
+          controllerPath,
+        );
+      }
+
+      continue;
+    }
+
+    const controllerContent =
+      filesByPath.get(
+        controllerPath,
+      );
+
+    if (!controllerContent) {
+      continue;
+    }
+
+    const handlerName =
+      route.handler
+        .split(
+          ".",
+        )
+        .at(
+          -1,
+        );
+
+    if (!handlerName) {
+      continue;
+    }
+
+    const calls =
+      importedCallsFromFunction(
+        controllerContent,
+        controllerPath,
+        handlerName,
+        snapshotPaths,
+      );
+
+    for (
+      const call
+      of calls
+    ) {
+      const serviceContent =
+        filesByPath.get(
+          call.servicePath,
+        );
+
+      if (!serviceContent) {
+        if (
+          snapshotPaths.has(
+            call.servicePath,
+          )
+        ) {
+          needed.add(
+            call.servicePath,
+          );
+        }
+
+        continue;
+      }
+
+      const directCollections =
+        directPocketBaseCollections(
+          serviceContent,
+          call.serviceFunction,
+        );
+
+      if (
+        directCollections.length
+          > 0
+      ) {
+        continue;
+      }
+
+      const reExport =
+        reExportedFunction(
+          serviceContent,
+          call.servicePath,
+          call.serviceFunction,
+          snapshotPaths,
+        );
+
+      if (
+        reExport
+        && !filesByPath.has(
+          reExport.servicePath,
+        )
+        && snapshotPaths.has(
+          reExport.servicePath,
+        )
+      ) {
+        needed.add(
+          reExport.servicePath,
+        );
+      }
+    }
+  }
+
+  return [
+    ...needed,
+  ];
+}
+
 export function linkBackendRoutesToDirectDbCollections(
   routes:
     readonly BackendResolvedRoute[],
@@ -1565,8 +1718,6 @@ export function buildProcessGraph(
         route.handler,
       path:
         route.handlerImportedFrom,
-      line:
-        route.handlerImportLine,
     });
 
     const evidence:
@@ -1585,7 +1736,7 @@ export function buildProcessGraph(
     ) {
       evidence.push({
         path:
-          route.handlerImportedFrom,
+          route.sourcePath,
         line:
           route.handlerImportLine,
       });
