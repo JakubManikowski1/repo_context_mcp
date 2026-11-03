@@ -48,6 +48,7 @@ import { registerDbMermaidTools } from "./db-mermaid.js";
 import {
   pageRenderServerBindingFromEnv,
   pageRenderTargetAccessForRequest,
+  staticPageRenderExecutionToolRendererFromEnv,
 } from "./page-render-server.js";
 
 import {
@@ -101,10 +102,19 @@ function registerOptionalProfileTools(
 const serverRuntime =
   loadServerRuntimeFromEnv();
 
-const pageRenderBinding =
-  pageRenderServerBindingFromEnv(
-    serverRuntime.mode,
+const staticPageRenderExecutionRenderer =
+  staticPageRenderExecutionToolRendererFromEnv(
+    serverRuntime.mode === "legacy"
+      ? serverRuntime.staticRepositoryDefinitions
+      : null,
   );
+
+const pageRenderBinding =
+  staticPageRenderExecutionRenderer
+    ? null
+    : pageRenderServerBindingFromEnv(
+        serverRuntime.mode,
+      );
 
 const handler = createMcpHandler((ctx) => {
   const {
@@ -222,23 +232,35 @@ GENERAL
   );
 
   const pageRenderTargetAccess =
-    serverRuntime.mode === "legacy" &&
-    !legacyRepository
+    staticPageRenderExecutionRenderer
+    || !pageRenderBinding
+    || (
+      serverRuntime.mode === "legacy"
+      && !legacyRepository
+    )
       ? null
       : pageRenderTargetAccessForRequest(
           pageRenderBinding,
           legacyRepository,
         );
 
+  const pageRenderToolRenderer =
+    staticPageRenderExecutionRenderer
+    ?? (
+      pageRenderTargetAccess
+        ? createPageRenderTargetToolRenderer(
+            pageRenderTargetAccess,
+          )
+        : null
+    );
+
   if (
-    pageRenderTargetAccess
+    pageRenderToolRenderer
   ) {
     registerPageRenderTools(
       server,
       repositoryAccess,
-      createPageRenderTargetToolRenderer(
-        pageRenderTargetAccess,
-      ),
+      pageRenderToolRenderer,
     );
   }
 

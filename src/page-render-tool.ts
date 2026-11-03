@@ -171,7 +171,7 @@ export function registerPageRenderTools(
     "page_render",
     {
       description:
-        "Render a route from an explicitly configured repository-bound running application. Returns bounded rendered DOM context and, when available, a screenshot. The tool never installs or starts the target application.",
+        "Render a route from the selected repository using trusted server-side render configuration. Returns bounded rendered DOM context and, when available, a screenshot. Workspace, command, host, port, and origin are not model-controlled.",
       inputSchema:
         z.object({
           repository_id:

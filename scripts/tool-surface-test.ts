@@ -3,6 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import {
   mkdtempSync,
   rmSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -340,6 +341,76 @@ async function main() {
       }
     }
 
+    const registryDocument =
+      JSON.parse(
+        readFileSync(
+          registryPath,
+          "utf8",
+        ),
+      ) as {
+        repositories?:
+          Array<{
+            id?: unknown;
+          }>;
+      };
+
+    const renderRepositoryId =
+      registryDocument
+        .repositories
+        ?.[0]
+        ?.id;
+
+    if (
+      typeof renderRepositoryId
+        !== "string"
+      || !renderRepositoryId
+    ) {
+      throw new Error(
+        "Static registry render test requires a repository id",
+      );
+    }
+
+    const renderProfilesPath =
+      `${registryPath}.render-profiles.json`;
+
+    writeFileSync(
+      renderProfilesPath,
+      JSON.stringify(
+        {
+          version:
+            1,
+
+          profiles: [
+            {
+              repositoryId:
+                renderRepositoryId,
+
+              strategy:
+                "local-workspace",
+
+              workspace:
+                directory,
+
+              cwd:
+                ".",
+
+              command:
+                process.execPath,
+
+              args: [
+                "server.mjs",
+                "{host}",
+                "{port}",
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
     const staticRegistryWithRender =
       await listTools(
         3113,
@@ -361,6 +432,40 @@ async function main() {
       staticRegistryWithRender,
       [...CORE_TOOLS].sort(),
       "static-registry-render-compatible",
+    );
+
+    const staticRegistryWithExecutionRender =
+      await listTools(
+        3114,
+        privateKeyPath,
+        "ui",
+        {
+          REPO_CONTEXT_REPOSITORIES_FILE:
+            registryPath,
+
+          REPO_CONTEXT_RENDER_PROFILES_FILE:
+            renderProfilesPath,
+
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+
+          // Prevent any stale local .env legacy render
+          // configuration from entering this test.
+          REPO_CONTEXT_RENDER_ORIGIN:
+            "",
+
+          REPO_CONTEXT_RENDER_REPOSITORY_ID:
+            "",
+        },
+      );
+
+    assertEqual(
+      staticRegistryWithExecutionRender,
+      [
+        ...CORE_TOOLS,
+        "page_render",
+      ].sort(),
+      "static-registry-execution-render",
     );
 
     console.log(
