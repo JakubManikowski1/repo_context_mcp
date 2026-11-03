@@ -78,6 +78,12 @@ const suites:
     },
     {
       label:
+        "Page render MCP tool",
+      script:
+        "test:page-render-tool",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",

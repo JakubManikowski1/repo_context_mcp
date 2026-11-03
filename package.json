@@ -39,7 +39,8 @@
     "test:page-render-policy": "tsx scripts/page-render-policy-test.ts",
     "test:page-renderer": "tsx scripts/page-renderer-test.ts",
     "smoke:page-render": "tsx scripts/page-render-smoke.ts",
-    "test:page-render-target": "tsx scripts/page-render-target-test.ts"
+    "test:page-render-target": "tsx scripts/page-render-target-test.ts",
+    "test:page-render-tool": "tsx scripts/page-render-tool-test.ts"
   },
   "keywords": [
     "mcp",
