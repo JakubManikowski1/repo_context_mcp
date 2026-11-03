@@ -78,6 +78,12 @@ const suites:
     },
     {
       label:
+        "Page render execution profiles",
+      script:
+        "test:page-render-profile",
+    },
+    {
+      label:
         "Page render MCP tool",
       script:
         "test:page-render-tool",
