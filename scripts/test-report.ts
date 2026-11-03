@@ -84,6 +84,12 @@ const suites:
     },
     {
       label:
+        "Page render execution sessions",
+      script:
+        "test:page-render-session",
+    },
+    {
+      label:
         "Page render MCP tool",
       script:
         "test:page-render-tool",

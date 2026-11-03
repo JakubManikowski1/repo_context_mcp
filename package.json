@@ -43,6 +43,7 @@
     "smoke:page-render": "tsx scripts/page-render-smoke.ts",
     "test:page-render-target": "tsx scripts/page-render-target-test.ts",
     "test:page-render-profile": "tsx scripts/page-render-execution-profile-test.ts",
+    "test:page-render-session": "tsx scripts/page-render-execution-session-test.ts",
     "test:page-render-tool": "tsx scripts/page-render-tool-test.ts",
     "test:page-render-server": "tsx scripts/page-render-server-test.ts"
   },
