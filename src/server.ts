@@ -157,6 +157,13 @@ WORKFLOW
 - Do not call workflow tools routinely or "just in case".
 - Prefer repo_code alone when the requested task can be answered from code context.
 
+PAGE RENDERING
+- page_render may be exposed when an explicit repository-bound render target is configured.
+- Use page_render only when current rendered application state materially helps the task.
+- Keep runtime rendering separate from static repository analysis: ui_flow describes source-backed UI/process structure, while page_render describes the current running page.
+- page_render never installs dependencies, starts the target application, or installs a browser.
+- Do not infer that a render target exists when page_render is absent.
+
 PERFORMANCE
 - A normal repository task should use 1-2 MCP calls total.
 - For a known issue number: issue_get, then usually one repo_code call.
