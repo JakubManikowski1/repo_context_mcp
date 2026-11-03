@@ -66,6 +66,12 @@ const suites:
     },
     {
       label:
+        "Page renderer",
+      script:
+        "test:page-renderer",
+    },
+    {
+      label:
         "Connection crypto",
       script:
         "test:crypto",

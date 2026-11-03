@@ -36,7 +36,9 @@
     "verify": "npm test && npm audit",
     "test:connect-http": "tsx scripts/github-connect-router-test.ts",
     "test:connect-server-e2e": "tsx scripts/github-connect-server-e2e-test.ts",
-    "test:page-render-policy": "tsx scripts/page-render-policy-test.ts"
+    "test:page-render-policy": "tsx scripts/page-render-policy-test.ts",
+    "test:page-renderer": "tsx scripts/page-renderer-test.ts",
+    "smoke:page-render": "tsx scripts/page-render-smoke.ts"
   },
   "keywords": [
     "mcp",
@@ -59,6 +61,7 @@
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
     "jose": "6.2.12",
+    "playwright-core": "1.64.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
