@@ -32,8 +32,15 @@ import {
 import {
   createConnectionRepositoryAccess,
   createLegacyRepositoryAccess,
+  createStaticRepositoryAccess,
   type RepositoryToolAccess,
 } from "./repository-access.js";
+
+import {
+  createStaticRepositoryRegistrations,
+  loadStaticRepositoryRegistry,
+  type StaticRepositoryDefinition,
+} from "./static-repository-registry.js";
 
 import {
   getAuthenticatedPrincipal,
@@ -65,6 +72,10 @@ import {
 export type LegacyServerRuntime =
   Readonly<{
     mode: "legacy";
+
+    staticRepositoryDefinitions:
+      readonly StaticRepositoryDefinition[]
+      | null;
   }>;
 
 export type GitHubConnectServerRuntime =
@@ -309,14 +320,35 @@ export function loadServerRuntimeFromEnv(
       );
     }
 
+    const repositoriesFile =
+      env.REPO_CONTEXT_REPOSITORIES_FILE
+        ?.trim();
+
     return {
-      mode: "legacy",
+      mode:
+        "legacy",
+
+      staticRepositoryDefinitions:
+        repositoriesFile
+          ? loadStaticRepositoryRegistry(
+              repositoriesFile,
+            )
+          : null,
     };
   }
 
   if (mode !== "oauth") {
     throw new Error(
       "REPO_CONTEXT_AUTH_MODE must be either legacy or oauth",
+    );
+  }
+
+  if (
+    env.REPO_CONTEXT_REPOSITORIES_FILE
+      ?.trim()
+  ) {
+    throw new Error(
+      "REPO_CONTEXT_REPOSITORIES_FILE is supported only in legacy mode",
     );
   }
 
@@ -629,6 +661,29 @@ export function createRequestRepositoryAccess(
   authInfo: AuthInfo | undefined,
 ): RequestRepositoryAccess {
   if (runtime.mode === "legacy") {
+    if (
+      runtime.staticRepositoryDefinitions
+    ) {
+      const registrations =
+        createStaticRepositoryRegistrations(
+          runtime.staticRepositoryDefinitions,
+        );
+
+      return {
+        repositoryAccess:
+          createStaticRepositoryAccess(
+            registrations,
+          ),
+
+        // Optional profiles still depend on the
+        // historical global repository configuration.
+        // They will be migrated separately so they
+        // cannot accidentally read the wrong repo.
+        legacyRepository:
+          null,
+      };
+    }
+
     const repository =
       getLegacyRepositoryContext();
 

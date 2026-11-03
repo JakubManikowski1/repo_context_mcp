@@ -120,6 +120,12 @@ const suites:
     },
     {
       label:
+        "Static repository runtime",
+      script:
+        "test:static-runtime",
+    },
+    {
+      label:
         "MCP tool isolation",
       script:
         "test:isolation",
