@@ -77,7 +77,7 @@ const execution =
     repositoryAccess,
     targetAccess,
     {
-      repositoryId:
+      repository_id:
         "conn-a",
       route:
         "/admin/customers",
@@ -218,25 +218,32 @@ let registeredName:
 let registeredHandler:
   (
     input: {
-      repositoryId?: string;
+      repository_id?: string;
       route: string;
     },
   ) => Promise<unknown>;
 
+let registeredConfiguration:
+  unknown =
+    null;
+
 const fakeServer = {
   registerTool(
     name: string,
-    _configuration: unknown,
+    configuration: unknown,
     handler:
       (
         input: {
-          repositoryId?: string;
+          repository_id?: string;
           route: string;
         },
       ) => Promise<unknown>,
   ) {
     registeredName =
       name;
+
+    registeredConfiguration =
+      configuration;
 
     registeredHandler =
       handler;
@@ -252,6 +259,27 @@ registerPageRenderTools(
 assert.equal(
   registeredName,
   "page_render",
+);
+
+
+const registeredInputSchema =
+  (
+    registeredConfiguration as {
+      inputSchema: {
+        shape:
+          Record<string, unknown>;
+      };
+    }
+  ).inputSchema;
+
+assert.deepEqual(
+  Object.keys(
+    registeredInputSchema.shape,
+  ).sort(),
+  [
+    "repository_id",
+    "route",
+  ],
 );
 
 assert.equal(

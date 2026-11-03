@@ -19,7 +19,7 @@ import type {
 
 export type PageRenderToolInput =
   Readonly<{
-    repositoryId?: string;
+    repository_id?: string;
     route: string;
   }>;
 
@@ -80,7 +80,7 @@ export async function runPageRenderTool(
 ): Promise<PageRenderToolExecution> {
   const repository =
     await repositoryAccess.resolve(
-      input.repositoryId,
+      input.repository_id,
     );
 
   const snapshot =
@@ -148,7 +148,7 @@ export function registerPageRenderTools(
         "Render a route from an explicitly configured repository-bound running application. Returns bounded rendered DOM context and, when available, a screenshot. The tool never installs or starts the target application.",
       inputSchema:
         z.object({
-          repositoryId:
+          repository_id:
             z.string()
               .min(
                 1,
