@@ -169,7 +169,36 @@ const persistentVisitedUrls:
 let persistentCurrentUrl =
   "";
 
+let persistentText =
+  "Rendered body";
+
 const persistentFakePage = {
+  locator(selector: string) {
+    return {
+      async count() {
+        if (selector === "#missing") return 0;
+        if (selector === "#duplicate") return 2;
+        return 1;
+      },
+
+      async click() {
+        if (selector === "#toggle") {
+          persistentText = "Clicked";
+        }
+
+        if (selector === "#next") {
+          persistentCurrentUrl =
+            "http://127.0.0.1:5173/next";
+        }
+
+        if (selector === "#external") {
+          persistentCurrentUrl =
+            "https://example.com/";
+        }
+      },
+    };
+  },
+
   mainFrame() {
     return {};
   },
@@ -204,7 +233,7 @@ const persistentFakePage = {
       title:
         "Persistent browser test",
       text:
-        "Rendered body",
+        persistentText,
       textTruncated:
         false,
       elements:
@@ -315,12 +344,65 @@ assert.ok(
   persistentFirst.screenshot,
 );
 
+const clicked = await persistentSession.click("#toggle");
+
+assert.equal(clicked.text, "Clicked");
+assert.equal(clicked.status, null);
+
+assert.equal(
+  clicked.finalUrl,
+  "http://127.0.0.1:5173/second",
+);
+
+assert.equal(persistentVisitedUrls.length, 2);
+
+for (const selector of [" ", "x".repeat(513)]) {
+  await assert.rejects(
+    () => persistentSession.click(selector),
+    (error) =>
+      error instanceof PageRenderBrowserError
+      && error.code === "render_interaction_selector_invalid",
+  );
+}
+
+for (const selector of ["#missing", "#duplicate"]) {
+  await assert.rejects(
+    () => persistentSession.click(selector),
+    (error) =>
+      error instanceof PageRenderBrowserError
+      && error.code === "render_interaction_target_invalid",
+  );
+}
+
+const nextPage = await persistentSession.click("#next");
+
+assert.equal(
+  nextPage.finalUrl,
+  "http://127.0.0.1:5173/next",
+);
+
+assert.equal(persistentVisitedUrls.length, 2);
+
+await assert.rejects(
+  () => persistentSession.click("#external"),
+  (error) =>
+    error instanceof PageRenderBrowserError
+    && error.code === "render_navigation_cross_origin",
+);
+
 await persistentSession.close();
 await persistentSession.close();
 
 assert.equal(
   persistentCloseCount,
   1,
+);
+
+await assert.rejects(
+  () => persistentSession.click("#toggle"),
+  (error) =>
+    error instanceof PageRenderBrowserError
+    && error.code === "render_browser_session_closed",
 );
 
 await assert.rejects(

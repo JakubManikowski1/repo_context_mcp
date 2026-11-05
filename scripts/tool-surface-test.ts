@@ -26,6 +26,7 @@ let lastListedTools:
   >["tools"] = [];
 
 const BROWSER_SESSION_TOOLS = [
+  "browser_session_click",
   "browser_session_close",
   "browser_session_navigate",
   "browser_session_open",

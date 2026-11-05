@@ -43,7 +43,10 @@ export type PageRenderBrowserErrorCode =
   | "render_browser_launch_failed"
   | "render_browser_session_closed"
   | "render_navigation_failed"
-  | "render_navigation_cross_origin";
+  | "render_navigation_cross_origin"
+  | "render_interaction_selector_invalid"
+  | "render_interaction_target_invalid"
+  | "render_interaction_failed";
 
 export class PageRenderBrowserError
   extends Error {
@@ -127,6 +130,8 @@ export interface PageRenderBrowserSession {
   render(
     route: string,
   ): Promise<PageRenderSnapshot>;
+
+  click(selector: string): Promise<PageRenderSnapshot>;
 
   close(): Promise<void>;
 }
@@ -534,6 +539,81 @@ export async function startPageRenderBrowserSession(
       );
     },
 
+    async click(selector: string) {
+      if (closed) {
+        throw new PageRenderBrowserError(
+          "render_browser_session_closed",
+          "Page render browser session is closed",
+        );
+      }
+
+      const target = selector.trim();
+
+      if (
+        !target
+        || target.length > 512
+        || target.includes("\u0000")
+      ) {
+        throw new PageRenderBrowserError(
+          "render_interaction_selector_invalid",
+          "Browser click selector is invalid",
+        );
+      }
+
+      state.blockedResourceOrigins.clear();
+      state.blockedWebSocketOrigins.clear();
+      state.networkState.blockedNavigationUrl = undefined;
+
+      try {
+        const locator = state.page.locator(target);
+
+        if (await locator.count() !== 1) {
+          throw new PageRenderBrowserError(
+            "render_interaction_target_invalid",
+            "Browser click selector must match exactly one element",
+          );
+        }
+
+        await locator.click({
+          timeout: NAVIGATION_TIMEOUT_MS,
+        });
+      } catch (error) {
+        if (state.networkState.blockedNavigationUrl) {
+          throw new PageRenderBrowserError(
+            "render_navigation_cross_origin",
+            "Browser click attempted an external navigation",
+          );
+        }
+
+        if (error instanceof PageRenderBrowserError) {
+          throw error;
+        }
+
+        throw new PageRenderBrowserError(
+          "render_interaction_failed",
+          "Browser element click failed",
+        );
+      }
+
+      if (state.networkState.blockedNavigationUrl) {
+        throw new PageRenderBrowserError(
+          "render_navigation_cross_origin",
+          "Browser click attempted an external navigation",
+        );
+      }
+
+      return renderPageSnapshot(
+        {
+          origin,
+          route: "/",
+          browserExecutablePath:
+            options.browserExecutablePath,
+        },
+        state,
+        true,
+      );
+    },
+
     async close() {
       if (closed) {
         return;
@@ -552,6 +632,7 @@ export async function renderPageSnapshot(
     RenderPageSnapshotOptions,
   browserState?:
     PageRenderBrowserState,
+  captureCurrentPage = false,
 ): Promise<PageRenderSnapshot> {
   const origin =
     normalizePageRenderOrigin(
@@ -565,11 +646,19 @@ export async function renderPageSnapshot(
     );
   }
 
-  const requestedUrl =
-    resolvePageRenderUrl(
-      origin,
-      options.route,
+  const requestedUrl = captureCurrentPage
+    ? browserState?.page.url()
+    : resolvePageRenderUrl(
+        origin,
+        options.route,
+      );
+
+  if (!requestedUrl) {
+    throw new PageRenderBrowserError(
+      "render_navigation_failed",
+      "Cannot capture a page without a live session",
     );
+  }
 
   const ownsBrowserState =
     browserState ===
@@ -590,11 +679,11 @@ export async function renderPageSnapshot(
     networkState,
   } = state;
 
-  blockedResourceOrigins.clear();
-  blockedWebSocketOrigins.clear();
-
-  networkState.blockedNavigationUrl =
-    undefined;
+  if (!captureCurrentPage) {
+    blockedResourceOrigins.clear();
+    blockedWebSocketOrigins.clear();
+    networkState.blockedNavigationUrl = undefined;
+  }
 
   try {
     let status:
@@ -602,20 +691,17 @@ export async function renderPageSnapshot(
         null;
 
     try {
-      const response =
-        await page.goto(
+      if (!captureCurrentPage) {
+        const response = await page.goto(
           requestedUrl,
           {
-            waitUntil:
-              "domcontentloaded",
-            timeout:
-              NAVIGATION_TIMEOUT_MS,
+            waitUntil: "domcontentloaded",
+            timeout: NAVIGATION_TIMEOUT_MS,
           },
         );
 
-      status =
-        response?.status()
-        ?? null;
+        status = response?.status() ?? null;
+      }
     } catch {
       if (
         networkState.blockedNavigationUrl
@@ -663,6 +749,19 @@ export async function renderPageSnapshot(
     await page.waitForTimeout(
       SETTLE_MS,
     );
+
+    if (
+      captureCurrentPage
+      && (
+        networkState.blockedNavigationUrl
+        || new URL(page.url()).origin !== origin
+      )
+    ) {
+      throw new PageRenderBrowserError(
+        "render_navigation_cross_origin",
+        "Browser click left or attempted to leave the configured origin",
+      );
+    }
 
     const rendered =
       await page.evaluate(

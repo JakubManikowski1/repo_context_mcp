@@ -167,6 +167,10 @@ const startBrowserSession =
         );
       },
 
+      async click(_selector) {
+        return snapshotFor("/clicked");
+      },
+
       async close() {
         cleanupOrder.push(
           "browser",
@@ -290,6 +294,21 @@ assert.equal(
 
 assert.equal(
   rendered.lastAccessAt,
+  "2026-11-05T08:00:15.000Z",
+);
+
+const clickedInfo = await manager.click(
+  opened.sessionId,
+  "#nav",
+);
+
+assert.equal(
+  clickedInfo.snapshot.finalUrl,
+  "http://127.0.0.1:5173/clicked",
+);
+
+assert.equal(
+  clickedInfo.lastAccessAt,
   "2026-11-05T08:00:15.000Z",
 );
 
