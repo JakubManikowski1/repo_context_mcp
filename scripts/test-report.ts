@@ -78,6 +78,36 @@ const suites:
     },
     {
       label:
+        "Page render execution profiles",
+      script:
+        "test:page-render-profile",
+    },
+    {
+      label:
+        "Page render execution sessions",
+      script:
+        "test:page-render-session",
+    },
+    {
+      label:
+        "Page render execution renderer",
+      script:
+        "test:page-render-execution-renderer",
+    },
+    {
+      label:
+        "Page render browser session manager",
+      script:
+        "test:page-render-browser-session-manager",
+    },
+    {
+      label:
+        "Page render browser session MCP tools",
+      script:
+        "test:page-render-browser-session-tool",
+    },
+    {
+      label:
         "Page render MCP tool",
       script:
         "test:page-render-tool",
@@ -111,6 +141,18 @@ const suites:
         "Repository selection",
       script:
         "test:selection",
+    },
+    {
+      label:
+        "Static repository registry",
+      script:
+        "test:static-registry",
+    },
+    {
+      label:
+        "Static repository runtime",
+      script:
+        "test:static-runtime",
     },
     {
       label:

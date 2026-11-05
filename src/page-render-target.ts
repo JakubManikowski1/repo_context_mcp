@@ -24,6 +24,7 @@ export interface PageRenderTargetAccess {
 
 export type PageRenderTargetErrorCode =
   | "render_target_repository_key_invalid"
+  | "render_target_repository_key_duplicate"
   | "render_target_configuration_incomplete"
   | "render_target_not_found";
 
@@ -65,34 +66,58 @@ function normalizedRepositoryKey(
   return key;
 }
 
-export function createSinglePageRenderTargetAccess(
-  target:
-    PageRenderTarget,
+export function createPageRenderTargetAccess(
+  targets:
+    readonly PageRenderTarget[],
 ): PageRenderTargetAccess {
-  const repositoryKey =
-    normalizedRepositoryKey(
-      target.repositoryKey,
-    );
+  const normalizedTargets =
+    new Map<
+      string,
+      PageRenderTarget
+    >();
 
-  const browserExecutablePath =
-    normalizePageRenderBrowserExecutable(
-      target.browserExecutablePath,
-    );
+  for (
+    const target
+    of targets
+  ) {
+    const repositoryKey =
+      normalizedRepositoryKey(
+        target.repositoryKey,
+      );
 
-  if (!browserExecutablePath) {
-    throw new PageRenderTargetError(
-      "render_target_configuration_incomplete",
-      "Page render target browser executable is missing",
+    const browserExecutablePath =
+      normalizePageRenderBrowserExecutable(
+        target.browserExecutablePath,
+      );
+
+    if (!browserExecutablePath) {
+      throw new PageRenderTargetError(
+        "render_target_configuration_incomplete",
+        "Page render target browser executable is missing",
+      );
+    }
+
+    if (
+      normalizedTargets.has(
+        repositoryKey,
+      )
+    ) {
+      throw new PageRenderTargetError(
+        "render_target_repository_key_duplicate",
+        "Page render target repository key must be unique",
+      );
+    }
+
+    normalizedTargets.set(
+      repositoryKey,
+      {
+        repositoryKey,
+        origin:
+          target.origin,
+        browserExecutablePath,
+      },
     );
   }
-
-  const normalizedTarget:
-    PageRenderTarget = {
-      repositoryKey,
-      origin:
-        target.origin,
-      browserExecutablePath,
-    };
 
   return {
     async resolve(
@@ -103,16 +128,25 @@ export function createSinglePageRenderTargetAccess(
           requestedRepositoryKey,
         );
 
-      if (
-        requestedKey
-          !== repositoryKey
-      ) {
-        return null;
-      }
-
-      return normalizedTarget;
+      return (
+        normalizedTargets.get(
+          requestedKey,
+        )
+        ?? null
+      );
     },
   };
+}
+
+export function createSinglePageRenderTargetAccess(
+  target:
+    PageRenderTarget,
+): PageRenderTargetAccess {
+  return createPageRenderTargetAccess(
+    [
+      target,
+    ],
+  );
 }
 
 export function pageRenderTargetAccessFromEnv(

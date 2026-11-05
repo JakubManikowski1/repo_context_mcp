@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   PageRenderTargetError,
+  createPageRenderTargetAccess,
   createSinglePageRenderTargetAccess,
   pageRenderTargetAccessFromEnv,
 } from "../src/page-render-target.js";
@@ -97,6 +98,89 @@ assert.equal(
     "github:2:other/repo:main",
   ),
   null,
+);
+
+
+const multiAccess =
+  createPageRenderTargetAccess(
+    [
+      {
+        repositoryKey:
+          "static:lf:123:owner/lf:main",
+        origin:
+          "http://127.0.0.1:3000",
+        browserExecutablePath:
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      },
+      {
+        repositoryKey:
+          "static:self:123:owner/self:main",
+        origin:
+          "http://127.0.0.1:3001",
+        browserExecutablePath:
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      },
+    ],
+  );
+
+assert.deepEqual(
+  await multiAccess.resolve(
+    "static:lf:123:owner/lf:main",
+  ),
+  {
+    repositoryKey:
+      "static:lf:123:owner/lf:main",
+    origin:
+      "http://127.0.0.1:3000",
+    browserExecutablePath:
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  },
+);
+
+assert.deepEqual(
+  await multiAccess.resolve(
+    "static:self:123:owner/self:main",
+  ),
+  {
+    repositoryKey:
+      "static:self:123:owner/self:main",
+    origin:
+      "http://127.0.0.1:3001",
+    browserExecutablePath:
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  },
+);
+
+assert.equal(
+  await multiAccess.resolve(
+    "static:missing:123:owner/missing:main",
+  ),
+  null,
+);
+
+targetErrorCode(
+  () =>
+    createPageRenderTargetAccess(
+      [
+        {
+          repositoryKey:
+            "static:duplicate:123:owner/repo:main",
+          origin:
+            "http://127.0.0.1:3000",
+          browserExecutablePath:
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        },
+        {
+          repositoryKey:
+            "static:duplicate:123:owner/repo:main",
+          origin:
+            "http://127.0.0.1:3001",
+          browserExecutablePath:
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        },
+      ],
+    ),
+  "render_target_repository_key_duplicate",
 );
 
 assert.equal(

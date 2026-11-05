@@ -4,6 +4,8 @@ import {
 
 import {
   chromium,
+  type Browser,
+  type Page,
 } from "playwright-core";
 
 import {
@@ -39,6 +41,7 @@ export type PageRenderBrowserErrorCode =
   | "render_browser_executable_invalid"
   | "render_browser_executable_not_absolute"
   | "render_browser_launch_failed"
+  | "render_browser_session_closed"
   | "render_navigation_failed"
   | "render_navigation_cross_origin";
 
@@ -111,6 +114,42 @@ export type RenderPageSnapshotOptions =
     route: string;
     browserExecutablePath: string;
   }>;
+
+export type StartPageRenderBrowserSessionOptions =
+  Readonly<{
+    origin: string;
+    browserExecutablePath: string;
+  }>;
+
+export interface PageRenderBrowserSession {
+  readonly origin: string;
+
+  render(
+    route: string,
+  ): Promise<PageRenderSnapshot>;
+
+  close(): Promise<void>;
+}
+
+type PageRenderBrowserNetworkState = {
+  blockedNavigationUrl?:
+    string;
+};
+
+type PageRenderBrowserState =
+  Readonly<{
+    browser: Browser;
+    page: Page;
+    blockedResourceOrigins:
+      Set<string>;
+    blockedWebSocketOrigins:
+      Set<string>;
+    networkState:
+      PageRenderBrowserNetworkState;
+  }>;
+
+type PageRenderBrowserLauncher =
+  typeof chromium.launch;
 
 export function normalizePageRenderBrowserExecutable(
   value:
@@ -290,31 +329,18 @@ function addBlockedOrigin(
   );
 }
 
-export async function renderPageSnapshot(
-  options:
-    RenderPageSnapshotOptions,
-): Promise<PageRenderSnapshot> {
-  const origin =
-    normalizePageRenderOrigin(
-      options.origin,
-    );
-
-  if (!origin) {
-    throw new PageRenderBrowserError(
-      "render_navigation_failed",
-      "Page render origin is not configured",
-    );
-  }
-
-  const requestedUrl =
-    resolvePageRenderUrl(
-      origin,
-      options.route,
-    );
-
+async function startPageRenderBrowserState(
+  origin: string,
+  browserExecutablePath: string,
+  launchBrowser:
+    PageRenderBrowserLauncher =
+      chromium.launch.bind(
+        chromium,
+      ),
+): Promise<PageRenderBrowserState> {
   const executablePath =
     normalizePageRenderBrowserExecutable(
-      options.browserExecutablePath,
+      browserExecutablePath,
     );
 
   if (!executablePath) {
@@ -328,7 +354,7 @@ export async function renderPageSnapshot(
 
   try {
     browser =
-      await chromium.launch({
+      await launchBrowser({
         executablePath,
         headless:
           true,
@@ -361,8 +387,8 @@ export async function renderPageSnapshot(
     const blockedWebSocketOrigins =
       new Set<string>();
 
-    let blockedNavigationUrl:
-      string | undefined;
+    const networkState:
+      PageRenderBrowserNetworkState = {};
 
     await context.routeWebSocket(
       "**/*",
@@ -424,7 +450,7 @@ export async function renderPageSnapshot(
             && request.frame()
               === page.mainFrame()
           ) {
-            blockedNavigationUrl =
+            networkState.blockedNavigationUrl =
               request.url();
           }
 
@@ -439,6 +465,138 @@ export async function renderPageSnapshot(
       },
     );
 
+    return {
+      browser,
+      page,
+      blockedResourceOrigins,
+      blockedWebSocketOrigins,
+      networkState,
+    };
+  } catch (error) {
+    await browser.close();
+
+    throw error;
+  }
+}
+
+export async function startPageRenderBrowserSession(
+  options:
+    StartPageRenderBrowserSessionOptions,
+  launchBrowser:
+    PageRenderBrowserLauncher =
+      chromium.launch.bind(
+        chromium,
+      ),
+): Promise<PageRenderBrowserSession> {
+  const origin =
+    normalizePageRenderOrigin(
+      options.origin,
+    );
+
+  if (!origin) {
+    throw new PageRenderBrowserError(
+      "render_navigation_failed",
+      "Page render origin is not configured",
+    );
+  }
+
+  const state =
+    await startPageRenderBrowserState(
+      origin,
+      options.browserExecutablePath,
+      launchBrowser,
+    );
+
+  let closed =
+    false;
+
+  return {
+    origin,
+
+    async render(
+      route: string,
+    ) {
+      if (closed) {
+        throw new PageRenderBrowserError(
+          "render_browser_session_closed",
+          "Page render browser session is closed",
+        );
+      }
+
+      return renderPageSnapshot(
+        {
+          origin,
+          route,
+          browserExecutablePath:
+            options.browserExecutablePath,
+        },
+        state,
+      );
+    },
+
+    async close() {
+      if (closed) {
+        return;
+      }
+
+      closed =
+        true;
+
+      await state.browser.close();
+    },
+  };
+}
+
+export async function renderPageSnapshot(
+  options:
+    RenderPageSnapshotOptions,
+  browserState?:
+    PageRenderBrowserState,
+): Promise<PageRenderSnapshot> {
+  const origin =
+    normalizePageRenderOrigin(
+      options.origin,
+    );
+
+  if (!origin) {
+    throw new PageRenderBrowserError(
+      "render_navigation_failed",
+      "Page render origin is not configured",
+    );
+  }
+
+  const requestedUrl =
+    resolvePageRenderUrl(
+      origin,
+      options.route,
+    );
+
+  const ownsBrowserState =
+    browserState ===
+      undefined;
+
+  const state =
+    browserState
+    ?? await startPageRenderBrowserState(
+      origin,
+      options.browserExecutablePath,
+    );
+
+  const {
+    browser,
+    page,
+    blockedResourceOrigins,
+    blockedWebSocketOrigins,
+    networkState,
+  } = state;
+
+  blockedResourceOrigins.clear();
+  blockedWebSocketOrigins.clear();
+
+  networkState.blockedNavigationUrl =
+    undefined;
+
+  try {
     let status:
       number | null =
         null;
@@ -460,7 +618,7 @@ export async function renderPageSnapshot(
         ?? null;
     } catch {
       if (
-        blockedNavigationUrl
+        networkState.blockedNavigationUrl
       ) {
         throw new PageRenderBrowserError(
           "render_navigation_cross_origin",
@@ -784,6 +942,11 @@ export async function renderPageSnapshot(
       warnings,
     };
   } finally {
-    await browser.close();
+    networkState.blockedNavigationUrl =
+      undefined;
+
+    if (ownsBrowserState) {
+      await browser.close();
+    }
   }
 }

@@ -3,6 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import {
   mkdtempSync,
   rmSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +24,13 @@ let lastListedTools:
   Awaited<
     ReturnType<Client["listTools"]>
   >["tools"] = [];
+
+const BROWSER_SESSION_TOOLS = [
+  "browser_session_close",
+  "browser_session_navigate",
+  "browser_session_open",
+  "browser_session_state",
+];
 
 const FULL_TOOLS = [
   ...CORE_TOOLS,
@@ -80,6 +88,9 @@ async function listTools(
 
         REPO_CONTEXT_FEATURES:
           features ?? "",
+
+        REPO_CONTEXT_REPOSITORIES_FILE:
+          "",
 
         REPO_CONTEXT_RENDER_ORIGIN:
           "",
@@ -191,6 +202,58 @@ async function main() {
     }),
   );
 
+  const registryPath =
+    join(
+      directory,
+      "repositories.json",
+    );
+
+  writeFileSync(
+    registryPath,
+    JSON.stringify(
+      {
+        repositories: [
+          {
+            id:
+              "lf",
+
+            installationId:
+              12345678,
+
+            owner:
+              "tool-surface-owner",
+
+            repo:
+              "tool-surface-lf",
+
+            branch:
+              "main",
+          },
+
+          {
+            id:
+              "self",
+
+            installationId:
+              12345678,
+
+            owner:
+              "tool-surface-owner",
+
+            repo:
+              "tool-surface-self",
+
+            branch:
+              "main",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
   try {
     const core =
       await listTools(
@@ -284,6 +347,134 @@ async function main() {
         );
       }
     }
+
+    const registryDocument =
+      JSON.parse(
+        readFileSync(
+          registryPath,
+          "utf8",
+        ),
+      ) as {
+        repositories?:
+          Array<{
+            id?: unknown;
+          }>;
+      };
+
+    const renderRepositoryId =
+      registryDocument
+        .repositories
+        ?.[0]
+        ?.id;
+
+    if (
+      typeof renderRepositoryId
+        !== "string"
+      || !renderRepositoryId
+    ) {
+      throw new Error(
+        "Static registry render test requires a repository id",
+      );
+    }
+
+    const renderProfilesPath =
+      `${registryPath}.render-profiles.json`;
+
+    writeFileSync(
+      renderProfilesPath,
+      JSON.stringify(
+        {
+          version:
+            1,
+
+          profiles: [
+            {
+              repositoryId:
+                renderRepositoryId,
+
+              strategy:
+                "local-workspace",
+
+              workspace:
+                directory,
+
+              cwd:
+                ".",
+
+              command:
+                process.execPath,
+
+              args: [
+                "server.mjs",
+                "{host}",
+                "{port}",
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const staticRegistryWithRender =
+      await listTools(
+        3113,
+        privateKeyPath,
+        "ui",
+        {
+          REPO_CONTEXT_REPOSITORIES_FILE:
+            registryPath,
+
+          REPO_CONTEXT_RENDER_ORIGIN:
+            "http://127.0.0.1:5173",
+
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+        },
+      );
+
+    assertEqual(
+      staticRegistryWithRender,
+      [...CORE_TOOLS].sort(),
+      "static-registry-render-compatible",
+    );
+
+    const staticRegistryWithExecutionRender =
+      await listTools(
+        3114,
+        privateKeyPath,
+        "ui",
+        {
+          REPO_CONTEXT_REPOSITORIES_FILE:
+            registryPath,
+
+          REPO_CONTEXT_RENDER_PROFILES_FILE:
+            renderProfilesPath,
+
+          REPO_CONTEXT_RENDER_BROWSER_EXECUTABLE:
+            process.execPath,
+
+          // Prevent any stale local .env legacy render
+          // configuration from entering this test.
+          REPO_CONTEXT_RENDER_ORIGIN:
+            "",
+
+          REPO_CONTEXT_RENDER_REPOSITORY_ID:
+            "",
+        },
+      );
+
+    assertEqual(
+      staticRegistryWithExecutionRender,
+      [
+        ...CORE_TOOLS,
+        ...BROWSER_SESSION_TOOLS,
+        "page_render",
+      ].sort(),
+      "static-registry-execution-render",
+    );
 
     console.log(
       "Tool surface: OK",

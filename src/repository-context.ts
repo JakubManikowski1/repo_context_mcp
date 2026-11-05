@@ -1,7 +1,10 @@
 import { getOctokit, githubConfig } from "./github.js";
 
 export type RepositoryContext = {
-  source: "legacy-env" | "connection";
+  source:
+    | "legacy-env"
+    | "static-registry"
+    | "connection";
   provider: "github";
   key: string;
   owner: string;

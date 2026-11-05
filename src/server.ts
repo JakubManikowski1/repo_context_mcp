@@ -48,9 +48,23 @@ import { registerDbMermaidTools } from "./db-mermaid.js";
 import {
   pageRenderServerBindingFromEnv,
   pageRenderTargetAccessForRequest,
+  staticPageRenderExecutionConfigFromEnv,
 } from "./page-render-server.js";
 
 import {
+  createPageRenderExecutionToolRenderer,
+} from "./page-render-execution-renderer.js";
+
+import {
+  createPageRenderBrowserSessionManager,
+} from "./page-render-browser-session-manager.js";
+
+import {
+  registerPageRenderBrowserSessionTools,
+} from "./page-render-browser-session-tool.js";
+
+import {
+  createPageRenderTargetToolRenderer,
   registerPageRenderTools,
 } from "./page-render-tool.js";
 
@@ -100,10 +114,69 @@ function registerOptionalProfileTools(
 const serverRuntime =
   loadServerRuntimeFromEnv();
 
-const pageRenderBinding =
-  pageRenderServerBindingFromEnv(
-    serverRuntime.mode,
+const staticPageRenderExecutionConfig =
+  staticPageRenderExecutionConfigFromEnv(
+    serverRuntime.mode === "legacy"
+      ? serverRuntime.staticRepositoryDefinitions
+      : null,
   );
+
+const staticPageRenderExecutionRenderer =
+  staticPageRenderExecutionConfig
+    ? createPageRenderExecutionToolRenderer(
+        staticPageRenderExecutionConfig
+          .bindings,
+        staticPageRenderExecutionConfig
+          .browserExecutablePath,
+      )
+    : null;
+
+const pageRenderBrowserSessionManager =
+  staticPageRenderExecutionConfig
+    ? createPageRenderBrowserSessionManager({
+        bindings:
+          staticPageRenderExecutionConfig
+            .bindings,
+
+        browserExecutablePath:
+          staticPageRenderExecutionConfig
+            .browserExecutablePath,
+      })
+    : null;
+
+const pageRenderBinding =
+  staticPageRenderExecutionRenderer
+    ? null
+    : pageRenderServerBindingFromEnv(
+        serverRuntime.mode,
+      );
+
+const PAGE_RENDER_BROWSER_SESSION_CLEANUP_INTERVAL_MS =
+  60_000;
+
+const pageRenderBrowserSessionCleanupTimer =
+  pageRenderBrowserSessionManager
+    ? setInterval(
+        () => {
+          void pageRenderBrowserSessionManager
+            .cleanupExpired()
+            .catch(
+              (
+                error,
+              ) => {
+                console.error(
+                  "Page render browser session cleanup failed",
+                  error,
+                );
+              },
+            );
+        },
+        PAGE_RENDER_BROWSER_SESSION_CLEANUP_INTERVAL_MS,
+      )
+    : null;
+
+pageRenderBrowserSessionCleanupTimer
+  ?.unref();
 
 const handler = createMcpHandler((ctx) => {
   const {
@@ -221,18 +294,45 @@ GENERAL
   );
 
   const pageRenderTargetAccess =
-    pageRenderTargetAccessForRequest(
-      pageRenderBinding,
-      legacyRepository,
+    staticPageRenderExecutionRenderer
+    || !pageRenderBinding
+    || (
+      serverRuntime.mode === "legacy"
+      && !legacyRepository
+    )
+      ? null
+      : pageRenderTargetAccessForRequest(
+          pageRenderBinding,
+          legacyRepository,
+        );
+
+  const pageRenderToolRenderer =
+    staticPageRenderExecutionRenderer
+    ?? (
+      pageRenderTargetAccess
+        ? createPageRenderTargetToolRenderer(
+            pageRenderTargetAccess,
+          )
+        : null
     );
 
   if (
-    pageRenderTargetAccess
+    pageRenderToolRenderer
   ) {
     registerPageRenderTools(
       server,
       repositoryAccess,
-      pageRenderTargetAccess,
+      pageRenderToolRenderer,
+    );
+  }
+
+  if (
+    pageRenderBrowserSessionManager
+  ) {
+    registerPageRenderBrowserSessionTools(
+      server,
+      repositoryAccess,
+      pageRenderBrowserSessionManager,
     );
   }
 
@@ -390,6 +490,143 @@ app.get("/health", (_req, res) => {
 
 const port = Number(process.env.PORT ?? 3000);
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`Repo Context MCP running at http://127.0.0.1:${port}/mcp`);
-});
+const httpServer =
+  app.listen(
+    port,
+    "127.0.0.1",
+    () => {
+      console.log(
+        `Repo Context MCP running at http://127.0.0.1:${port}/mcp`,
+      );
+    },
+  );
+
+let serverShutdownStarted =
+  false;
+
+async function shutdownServer():
+  Promise<void> {
+  if (
+    serverShutdownStarted
+  ) {
+    return;
+  }
+
+  serverShutdownStarted =
+    true;
+
+  if (
+    pageRenderBrowserSessionCleanupTimer
+  ) {
+    clearInterval(
+      pageRenderBrowserSessionCleanupTimer,
+    );
+  }
+
+  let cleanupFailed =
+    false;
+
+  // Stop accepting new HTTP connections before taking the
+  // browser-session snapshot that closeAll() will drain.
+  const httpShutdown =
+    new Promise<void>(
+      (
+        resolve,
+        reject,
+      ) => {
+        httpServer.close(
+          (
+            error,
+          ) => {
+            if (
+              error
+            ) {
+              reject(
+                error,
+              );
+              return;
+            }
+
+            resolve();
+          },
+        );
+      },
+    );
+
+  if (
+    pageRenderBrowserSessionManager
+  ) {
+    try {
+      await pageRenderBrowserSessionManager
+        .closeAll();
+    } catch (
+      error
+    ) {
+      cleanupFailed =
+        true;
+
+      console.error(
+        "Page render browser session shutdown cleanup failed",
+        error,
+      );
+    }
+  }
+
+  try {
+    await httpShutdown;
+  } catch (
+    error
+  ) {
+    cleanupFailed =
+      true;
+
+    console.error(
+      "Repo Context MCP HTTP shutdown failed",
+      error,
+    );
+  }
+
+  // A request that was already in flight when HTTP shutdown
+  // started may have opened a browser session after the first
+  // closeAll() snapshot. Drain once more after all HTTP work
+  // has completed so no persistent browser/app process survives.
+  if (
+    pageRenderBrowserSessionManager
+  ) {
+    try {
+      await pageRenderBrowserSessionManager
+        .closeAll();
+    } catch (
+      error
+    ) {
+      cleanupFailed =
+        true;
+
+      console.error(
+        "Page render browser session post-drain cleanup failed",
+        error,
+      );
+    }
+  }
+
+  if (
+    cleanupFailed
+  ) {
+    process.exitCode =
+      1;
+  }
+}
+
+process.once(
+  "SIGINT",
+  () => {
+    void shutdownServer();
+  },
+);
+
+process.once(
+  "SIGTERM",
+  () => {
+    void shutdownServer();
+  },
+);

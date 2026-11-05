@@ -19,7 +19,7 @@ import type {
 
 export type PageRenderToolInput =
   Readonly<{
-    repositoryId?: string;
+    repository_id?: string;
     route: string;
   }>;
 
@@ -67,25 +67,51 @@ export type RenderPageForRepository =
     route: string,
   ) => Promise<PageRenderSnapshot>;
 
-export async function runPageRenderTool(
-  repositoryAccess:
-    RepositoryToolAccess,
+export interface PageRenderToolRenderer {
+  render(
+    repositoryKey: string,
+    route: string,
+  ):
+    Promise<PageRenderSnapshot>;
+}
+
+export function createPageRenderTargetToolRenderer(
   targetAccess:
     PageRenderTargetAccess,
-  input:
-    PageRenderToolInput,
   renderPage:
     RenderPageForRepository =
       renderPageForRepository,
+):
+  PageRenderToolRenderer {
+  return {
+    async render(
+      repositoryKey,
+      route,
+    ) {
+      return renderPage(
+        targetAccess,
+        repositoryKey,
+        route,
+      );
+    },
+  };
+}
+
+export async function runPageRenderTool(
+  repositoryAccess:
+    RepositoryToolAccess,
+  renderer:
+    PageRenderToolRenderer,
+  input:
+    PageRenderToolInput,
 ): Promise<PageRenderToolExecution> {
   const repository =
     await repositoryAccess.resolve(
-      input.repositoryId,
+      input.repository_id,
     );
 
   const snapshot =
-    await renderPage(
-      targetAccess,
+    await renderer.render(
       repository.key,
       input.route,
     );
@@ -138,17 +164,17 @@ export function registerPageRenderTools(
     McpServer,
   repositoryAccess:
     RepositoryToolAccess,
-  targetAccess:
-    PageRenderTargetAccess,
+  renderer:
+    PageRenderToolRenderer,
 ) {
   server.registerTool(
     "page_render",
     {
       description:
-        "Render a route from an explicitly configured repository-bound running application. Returns bounded rendered DOM context and, when available, a screenshot. The tool never installs or starts the target application.",
+        "Render a route from the selected repository using trusted server-side render configuration. Returns bounded rendered DOM context and, when available, a screenshot. Workspace, command, host, port, and origin are not model-controlled.",
       inputSchema:
         z.object({
-          repositoryId:
+          repository_id:
             z.string()
               .min(
                 1,
@@ -173,7 +199,7 @@ export function registerPageRenderTools(
       const execution =
         await runPageRenderTool(
           repositoryAccess,
-          targetAccess,
+          renderer,
           input,
         );
 

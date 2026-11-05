@@ -13,6 +13,7 @@ import type {
 } from "../src/page-render-target.js";
 
 import {
+  createPageRenderTargetToolRenderer,
   registerPageRenderTools,
   runPageRenderTool,
 } from "../src/page-render-tool.js";
@@ -72,16 +73,9 @@ let receivedRepositoryKey:
 let receivedRoute:
   string | undefined;
 
-const execution =
-  await runPageRenderTool(
-    repositoryAccess,
+const renderer =
+  createPageRenderTargetToolRenderer(
     targetAccess,
-    {
-      repositoryId:
-        "conn-a",
-      route:
-        "/admin/customers",
-    },
     async (
       receivedTargetAccess,
       repositoryKey,
@@ -136,6 +130,18 @@ const execution =
         warnings:
           [],
       };
+    },
+  );
+
+const execution =
+  await runPageRenderTool(
+    repositoryAccess,
+    renderer,
+    {
+      repository_id:
+        "conn-a",
+      route:
+        "/admin/customers",
     },
   );
 
@@ -218,25 +224,32 @@ let registeredName:
 let registeredHandler:
   (
     input: {
-      repositoryId?: string;
+      repository_id?: string;
       route: string;
     },
   ) => Promise<unknown>;
 
+let registeredConfiguration:
+  unknown =
+    null;
+
 const fakeServer = {
   registerTool(
     name: string,
-    _configuration: unknown,
+    configuration: unknown,
     handler:
       (
         input: {
-          repositoryId?: string;
+          repository_id?: string;
           route: string;
         },
       ) => Promise<unknown>,
   ) {
     registeredName =
       name;
+
+    registeredConfiguration =
+      configuration;
 
     registeredHandler =
       handler;
@@ -246,12 +259,33 @@ const fakeServer = {
 registerPageRenderTools(
   fakeServer,
   repositoryAccess,
-  targetAccess,
+  renderer,
 );
 
 assert.equal(
   registeredName,
   "page_render",
+);
+
+
+const registeredInputSchema =
+  (
+    registeredConfiguration as {
+      inputSchema: {
+        shape:
+          Record<string, unknown>;
+      };
+    }
+  ).inputSchema;
+
+assert.deepEqual(
+  Object.keys(
+    registeredInputSchema.shape,
+  ).sort(),
+  [
+    "repository_id",
+    "route",
+  ],
 );
 
 assert.equal(
