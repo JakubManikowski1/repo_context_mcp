@@ -25,6 +25,13 @@ let lastListedTools:
     ReturnType<Client["listTools"]>
   >["tools"] = [];
 
+const BROWSER_SESSION_TOOLS = [
+  "browser_session_close",
+  "browser_session_navigate",
+  "browser_session_open",
+  "browser_session_state",
+];
+
 const FULL_TOOLS = [
   ...CORE_TOOLS,
   "db_context",
@@ -463,6 +470,7 @@ async function main() {
       staticRegistryWithExecutionRender,
       [
         ...CORE_TOOLS,
+        ...BROWSER_SESSION_TOOLS,
         "page_render",
       ].sort(),
       "static-registry-execution-render",

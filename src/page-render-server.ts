@@ -19,6 +19,10 @@ import {
   createPageRenderExecutionToolRenderer,
 } from "./page-render-execution-renderer.js";
 
+import type {
+  PageRenderExecutionBinding,
+} from "./page-render-execution-renderer.js";
+
 import {
   staticRepositoryKey,
   type StaticRepositoryDefinition,
@@ -92,7 +96,16 @@ function optionalEnv(
     : undefined;
 }
 
-export function staticPageRenderExecutionToolRendererFromEnv(
+export type StaticPageRenderExecutionConfig =
+  Readonly<{
+    bindings:
+      readonly PageRenderExecutionBinding[];
+
+    browserExecutablePath:
+      string;
+  }>;
+
+export function staticPageRenderExecutionConfigFromEnv(
   definitions:
     readonly StaticRepositoryDefinition[]
     | null,
@@ -100,7 +113,7 @@ export function staticPageRenderExecutionToolRendererFromEnv(
     NodeJS.ProcessEnv =
       process.env,
 ):
-  PageRenderToolRenderer | null {
+  StaticPageRenderExecutionConfig | null {
   const profilesFile =
     optionalEnv(
       env,
@@ -169,38 +182,64 @@ export function staticPageRenderExecutionToolRendererFromEnv(
       profilesFile,
     );
 
-  const bindings =
-    profiles.map(
-      (
-        profile,
-      ) => {
-        const definition =
-          definitionsById.get(
-            profile.repositoryId,
-          );
-
-        if (
-          !definition
-        ) {
-          throw new PageRenderServerConfigError(
-            "render_server_execution_repository_unknown",
-            `Page render execution profile references unknown repository ${profile.repositoryId}`,
-          );
-        }
-
-        return {
-          repositoryKey:
-            staticRepositoryKey(
-              definition,
-            ),
+  const bindings:
+    PageRenderExecutionBinding[] =
+      profiles.map(
+        (
           profile,
-        };
-      },
-    );
+        ) => {
+          const definition =
+            definitionsById.get(
+              profile.repositoryId,
+            );
 
-  return createPageRenderExecutionToolRenderer(
+          if (
+            !definition
+          ) {
+            throw new PageRenderServerConfigError(
+              "render_server_execution_repository_unknown",
+              `Page render execution profile references unknown repository ${profile.repositoryId}`,
+            );
+          }
+
+          return {
+            repositoryKey:
+              staticRepositoryKey(
+                definition,
+              ),
+            profile,
+          };
+        },
+      );
+
+  return {
     bindings,
     browserExecutablePath,
+  };
+}
+
+export function staticPageRenderExecutionToolRendererFromEnv(
+  definitions:
+    readonly StaticRepositoryDefinition[]
+    | null,
+  env:
+    NodeJS.ProcessEnv =
+      process.env,
+):
+  PageRenderToolRenderer | null {
+  const config =
+    staticPageRenderExecutionConfigFromEnv(
+      definitions,
+      env,
+    );
+
+  if (!config) {
+    return null;
+  }
+
+  return createPageRenderExecutionToolRenderer(
+    config.bindings,
+    config.browserExecutablePath,
   );
 }
 
