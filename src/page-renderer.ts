@@ -334,7 +334,9 @@ async function startPageRenderBrowserState(
   browserExecutablePath: string,
   launchBrowser:
     PageRenderBrowserLauncher =
-      chromium.launch,
+      chromium.launch.bind(
+        chromium,
+      ),
 ): Promise<PageRenderBrowserState> {
   const executablePath =
     normalizePageRenderBrowserExecutable(
@@ -482,7 +484,9 @@ export async function startPageRenderBrowserSession(
     StartPageRenderBrowserSessionOptions,
   launchBrowser:
     PageRenderBrowserLauncher =
-      chromium.launch,
+      chromium.launch.bind(
+        chromium,
+      ),
 ): Promise<PageRenderBrowserSession> {
   const origin =
     normalizePageRenderOrigin(
