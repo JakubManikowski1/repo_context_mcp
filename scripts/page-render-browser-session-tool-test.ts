@@ -14,6 +14,7 @@ import type {
 
 import {
   registerPageRenderBrowserSessionTools,
+  runBrowserSessionClickTool,
   runBrowserSessionCloseTool,
   runBrowserSessionNavigateTool,
   runBrowserSessionOpenTool,
@@ -150,6 +151,14 @@ const manager = {
     );
   },
 
+  async click(
+    sessionId: string,
+    selector: string,
+  ) {
+    calls.push(`click:${sessionId}:${selector}`);
+    return info("/clicked");
+  },
+
   async close(
     sessionId: string,
   ) {
@@ -231,6 +240,19 @@ assert.equal(
   "http://127.0.0.1:5173/kontakt",
 );
 
+const clickedInfo = await runBrowserSessionClickTool(
+  manager,
+  {
+    session_id: "session_123",
+    selector: "#nav",
+  },
+);
+
+assert.equal(
+  clickedInfo.snapshot.finalUrl,
+  "http://127.0.0.1:5173/clicked",
+);
+
 const closed =
   await runBrowserSessionCloseTool(
     manager,
@@ -251,6 +273,7 @@ assert.deepEqual(
     "open:static:lf:/",
     "state:session_123",
     "navigate:session_123:/kontakt",
+    "click:session_123:#nav",
     "close:session_123",
   ],
 );
@@ -298,8 +321,27 @@ assert.deepEqual(
     "browser_session_open",
     "browser_session_state",
     "browser_session_navigate",
+    "browser_session_click",
     "browser_session_close",
   ],
+);
+
+const clickResult = await handlers.get(
+  "browser_session_click",
+)!({
+  session_id: "session_123",
+  selector: "#nav",
+}) as {
+  content: Array<{ type: string; text?: string }>;
+};
+
+assert.equal(clickResult.content.length, 2);
+
+assert.equal(
+  JSON.parse(
+    clickResult.content[0]?.text ?? "{}",
+  ).render.finalUrl,
+  "http://127.0.0.1:5173/clicked",
 );
 
 const openResult =

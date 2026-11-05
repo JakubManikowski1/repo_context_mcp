@@ -136,6 +136,11 @@ export interface PageRenderBrowserSessionManager {
     PageRenderBrowserSessionInfo
   >;
 
+  click(
+    sessionId: string,
+    selector: string,
+  ): Promise<PageRenderBrowserSessionInfo>;
+
   close(
     sessionId: string,
   ): Promise<boolean>;
@@ -657,6 +662,24 @@ export function createPageRenderBrowserSessionManager(
       return infoFor(
         record,
       );
+    },
+
+    async click(
+      sessionId,
+      selector,
+    ) {
+      const record = await liveRecord(
+        sessionId,
+      );
+
+      const snapshot = await record
+        .browserSession
+        .click(selector);
+
+      record.snapshot = snapshot;
+      record.lastAccessAtMs = currentTime();
+
+      return infoFor(record);
     },
 
     async close(

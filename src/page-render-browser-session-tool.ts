@@ -201,6 +201,19 @@ export async function runBrowserSessionNavigateTool(
   );
 }
 
+export async function runBrowserSessionClickTool(
+  manager: PageRenderBrowserSessionManager,
+  input: Readonly<{
+    session_id: string;
+    selector: string;
+  }>,
+) {
+  return manager.click(
+    input.session_id,
+    input.selector,
+  );
+}
+
 export async function runBrowserSessionCloseTool(
   manager:
     PageRenderBrowserSessionManager,
@@ -355,6 +368,34 @@ export function registerPageRenderBrowserSessionTools(
           contentForSession(
             info,
           ),
+      };
+    },
+  );
+
+  server.registerTool(
+    "browser_session_click",
+    {
+      description:
+        "Click exactly one matching element in a trusted browser session and return current DOM and screenshot. May trigger application state changes.",
+      inputSchema: z.object({
+        session_id: z.string().min(1),
+        selector: z.string().trim().min(1).max(512),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (input) => {
+      const info = await runBrowserSessionClickTool(
+        manager,
+        input,
+      );
+
+      return {
+        content: contentForSession(info),
       };
     },
   );
