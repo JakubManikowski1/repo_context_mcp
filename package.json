@@ -46,6 +46,7 @@
     "test:page-render-session": "tsx scripts/page-render-execution-session-test.ts",
     "test:page-render-execution-renderer": "tsx scripts/page-render-execution-renderer-test.ts",
     "test:page-render-browser-session-manager": "tsx scripts/page-render-browser-session-manager-test.ts",
+    "test:page-render-browser-session-tool": "tsx scripts/page-render-browser-session-tool-test.ts",
     "test:page-render-tool": "tsx scripts/page-render-tool-test.ts",
     "test:page-render-server": "tsx scripts/page-render-server-test.ts"
   },
