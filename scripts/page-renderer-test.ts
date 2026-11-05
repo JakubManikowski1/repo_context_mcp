@@ -10,6 +10,7 @@ import {
   pageRenderBrowserExecutableFromEnv,
   pageRenderNetworkUrlAllowed,
   renderPageSnapshot,
+  startPageRenderBrowserSession,
 } from "../src/page-renderer.js";
 
 function browserErrorCode(
@@ -154,6 +155,186 @@ await assert.rejects(
       instanceof PageRenderBrowserError
     && error.code
       === "render_browser_executable_not_absolute",
+);
+
+let persistentLaunchCount =
+  0;
+
+let persistentCloseCount =
+  0;
+
+const persistentVisitedUrls:
+  string[] = [];
+
+let persistentCurrentUrl =
+  "";
+
+const persistentFakePage = {
+  mainFrame() {
+    return {};
+  },
+
+  async goto(
+    url: string,
+  ) {
+    persistentCurrentUrl =
+      url;
+
+    persistentVisitedUrls.push(
+      url,
+    );
+
+    return {
+      status() {
+        return 200;
+      },
+    };
+  },
+
+  url() {
+    return persistentCurrentUrl;
+  },
+
+  async waitForTimeout() {
+    return;
+  },
+
+  async evaluate() {
+    return {
+      title:
+        "Persistent browser test",
+      text:
+        "Rendered body",
+      textTruncated:
+        false,
+      elements:
+        [],
+      elementsTruncated:
+        false,
+      viewport: {
+        width:
+          1280,
+        height:
+          720,
+      },
+    };
+  },
+
+  async screenshot() {
+    return Buffer.from(
+      "fake-jpeg",
+      "utf8",
+    );
+  },
+};
+
+const persistentFakeContext = {
+  async routeWebSocket() {
+    return;
+  },
+
+  async newPage() {
+    return persistentFakePage;
+  },
+
+  async route() {
+    return;
+  },
+};
+
+const persistentFakeBrowser = {
+  async newContext() {
+    return persistentFakeContext;
+  },
+
+  async close() {
+    persistentCloseCount +=
+      1;
+  },
+};
+
+const persistentFakeLaunch =
+  (async () => {
+    persistentLaunchCount +=
+      1;
+
+    return persistentFakeBrowser;
+  }) as unknown as
+    typeof chromium.launch;
+
+const persistentSession =
+  await startPageRenderBrowserSession(
+    {
+      origin:
+        "http://127.0.0.1:5173",
+      browserExecutablePath:
+        "/tmp/chromium",
+    },
+    persistentFakeLaunch,
+  );
+
+const persistentFirst =
+  await persistentSession.render(
+    "/first",
+  );
+
+const persistentSecond =
+  await persistentSession.render(
+    "/second",
+  );
+
+assert.equal(
+  persistentLaunchCount,
+  1,
+);
+
+assert.deepEqual(
+  persistentVisitedUrls,
+  [
+    "http://127.0.0.1:5173/first",
+    "http://127.0.0.1:5173/second",
+  ],
+);
+
+assert.equal(
+  persistentFirst.status,
+  200,
+);
+
+assert.equal(
+  persistentFirst.finalUrl,
+  "http://127.0.0.1:5173/first",
+);
+
+assert.equal(
+  persistentSecond.finalUrl,
+  "http://127.0.0.1:5173/second",
+);
+
+assert.ok(
+  persistentFirst.screenshot,
+);
+
+await persistentSession.close();
+await persistentSession.close();
+
+assert.equal(
+  persistentCloseCount,
+  1,
+);
+
+await assert.rejects(
+  () =>
+    persistentSession.render(
+      "/after-close",
+    ),
+  (
+    error,
+  ) =>
+    error
+      instanceof PageRenderBrowserError
+    && error.code
+      === "render_browser_session_closed",
 );
 
 console.log(
