@@ -96,6 +96,12 @@ const suites:
     },
     {
       label:
+        "Page render browser session manager",
+      script:
+        "test:page-render-browser-session-manager",
+    },
+    {
+      label:
         "Page render MCP tool",
       script:
         "test:page-render-tool",
